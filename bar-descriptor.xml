@@ -89,9 +89,9 @@
     <configuration id="com.qnx.qcc.toolChain.154552991" name="Simulator-Debug">
        <platformArchitecture>x86</platformArchitecture>
        <asset path="x86/o-g/FFCameraSample" entry="true" type="Qnx/Elf">FFCameraSample</asset>
-       <asset path="ffmpeg/lib/x86/libavcodec.so.54">lib/libavcodec.so.54</asset>
-       <asset path="ffmpeg/lib/x86/libavformat.so.54">lib/libavformat.so.54</asset>
-       <asset path="ffmpeg/lib/x86/libavutil.so.51">lib/libavutil.so.51</asset>
+       <asset path="ffmpeg/lib/x86/libavcodec.a">lib/libavcodec.a</asset>
+       <asset path="ffmpeg/lib/x86/libavformat.a">lib/libavformat.a</asset>
+       <asset path="ffmpeg/lib/x86/libavutil.a">lib/libavutil.a</asset>
     </configuration>
     
     <icon>

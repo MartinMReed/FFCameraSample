@@ -16,6 +16,7 @@ device {
 
 simulator {
 	ARCH = x86
+	LIBS += -lsocket -lz -lbz2
 	CONFIG(release, debug|release) {
 		DESTDIR = o
 	}
@@ -26,7 +27,7 @@ simulator {
 
 include($${TARGET}.pri)
 INCLUDEPATH += ../ffmpeg/include
-LIBS += -lcamapi -lscreen -L../ffmpeg/lib/$${ARCH} -lavcodec -lavformat -lavutil
+LIBS += -lcamapi -lscreen -L../ffmpeg/lib/$${ARCH} -lavformat -lavcodec -lavutil
 
 OBJECTS_DIR = $${DESTDIR}/.obj
 MOC_DIR = $${DESTDIR}/.moc

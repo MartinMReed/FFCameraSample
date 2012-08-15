@@ -10,4 +10,9 @@ Building the FFmpeg libs for ARM:
 	$ ./configure --enable-cross-compile --cross-prefix=arm-unknown-nto-qnx8.0.0eabi- --arch=armv7 --disable-debug --enable-optimizations --enable-asm --disable-static --enable-shared --target-os=qnx --disable-ffplay --disable-ffserver --disable-ffprobe --prefix=`pwd`/target  
 	$ make install  
 
+Building the FFmpeg libs for x86:
+
+	$ ./configure --enable-cross-compile --cross-prefix=i486-pc-nto-qnx8.0.0- --arch=x86 --disable-debug --enable-static --disable-shared --target-os=qnx --disable-ffplay --disable-ffserver --disable-ffprobe --disable-yasm --prefix=`pwd`/target  
+	$ make install  
+
 Built using the 10.0.6 BlackBerry 10 NDK, and tested on the BlackBerry Dev Alpha device.
