@@ -266,18 +266,7 @@ void FFCameraSampleApp::onStartStopRecording()
     }
 
     AVCodecContext *codec_context = NULL;
-    ffcamera_default_codec(CODEC_ID_MPEG2VIDEO, 288, 512, &codec_context);
-
-    codec_context->pix_fmt = PIX_FMT_YUV420P;
-    codec_context->width = VIDEO_WIDTH;
-    codec_context->height = VIDEO_HEIGHT;
-    codec_context->bit_rate = 400000;
-    codec_context->time_base.num = 1;
-    codec_context->time_base.den = 30;
-    codec_context->ticks_per_frame = 2;
-    codec_context->gop_size = 15;
-    codec_context->colorspace = AVCOL_SPC_SMPTE170M;
-    codec_context->thread_count = 2;
+    ffcamera_default_codec(CODEC_ID_MPEG2VIDEO, VIDEO_WIDTH, VIDEO_HEIGHT, &codec_context);
 
     ffcamera_init(ffc_context);
     ffcamera_set_close_callback(ffc_context, ffc_context_close, this);

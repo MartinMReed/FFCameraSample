@@ -95,8 +95,11 @@ ffcamera_error ffcamera_default_codec(enum CodecID codec_id,
     _codec_context->colorspace = AVCOL_SPC_SMPTE170M;
     _codec_context->thread_count = 2;
 
-    int codec_open = avcodec_open2(_codec_context, codec, NULL);
-    if (codec_open < 0) return FFCAMERA_COULD_NOT_OPEN_CODEC;
+    if (avcodec_open2(_codec_context, codec, NULL) < 0)
+    {
+        av_free(_codec_context);
+        return FFCAMERA_COULD_NOT_OPEN_CODEC;
+    }
 
     *codec_context = _codec_context;
 
