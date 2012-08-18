@@ -68,30 +68,34 @@
     <configuration id="com.qnx.qcc.toolChain.589937427" name="Default">
        <platformArchitecture>armle-v7</platformArchitecture>
        <asset path="arm/o.le-v7-g/FFCameraSample" entry="true" type="Qnx/Elf">FFCameraSample</asset>
-       <asset path="ffmpeg/lib/armle-v7/libavcodec.so.54">lib/libavcodec.so.54</asset>
-       <asset path="ffmpeg/lib/armle-v7/libavformat.so.54">lib/libavformat.so.54</asset>
-       <asset path="ffmpeg/lib/armle-v7/libavutil.so.51">lib/libavutil.so.51</asset>
+       <asset path="ffmpeg/lib/gpl/armle-v7/libavcodec.so.54">lib/libavcodec.so.54</asset>
+       <asset path="ffmpeg/lib/gpl/armle-v7/libavformat.so.54">lib/libavformat.so.54</asset>
+       <asset path="ffmpeg/lib/gpl/armle-v7/libavutil.so.51">lib/libavutil.so.51</asset>
+       <asset path="libx264/lib/armle-v7/libx264.so.125">lib/libx264.so.125</asset>
     </configuration>
     <configuration id="com.qnx.qcc.toolChain.346938780" name="Device-Debug">
        <platformArchitecture>armle-v7</platformArchitecture>
        <asset path="arm/o.le-v7-g/FFCameraSample" entry="true" type="Qnx/Elf">FFCameraSample</asset>
-       <asset path="ffmpeg/lib/armle-v7/libavcodec.so.54">lib/libavcodec.so.54</asset>
-       <asset path="ffmpeg/lib/armle-v7/libavformat.so.54">lib/libavformat.so.54</asset>
-       <asset path="ffmpeg/lib/armle-v7/libavutil.so.51">lib/libavutil.so.51</asset>
+       <asset path="ffmpeg/lib/gpl/armle-v7/libavcodec.so.54">lib/libavcodec.so.54</asset>
+       <asset path="ffmpeg/lib/gpl/armle-v7/libavformat.so.54">lib/libavformat.so.54</asset>
+       <asset path="ffmpeg/lib/gpl/armle-v7/libavutil.so.51">lib/libavutil.so.51</asset>
+       <asset path="libx264/lib/armle-v7/libx264.so.125">lib/libx264.so.125</asset>
     </configuration>
     <configuration id="com.qnx.qcc.toolChain.1167308947" name="Device-Release">
        <platformArchitecture>armle-v7</platformArchitecture>
        <asset path="arm/o.le-v7/FFCameraSample" entry="true" type="Qnx/Elf">FFCameraSample</asset>
-       <asset path="ffmpeg/lib/armle-v7/libavcodec.so.54">lib/libavcodec.so.54</asset>
-       <asset path="ffmpeg/lib/armle-v7/libavformat.so.54">lib/libavformat.so.54</asset>
-       <asset path="ffmpeg/lib/armle-v7/libavutil.so.51">lib/libavutil.so.51</asset>
+       <asset path="ffmpeg/lib/gpl/armle-v7/libavcodec.so.54">lib/libavcodec.so.54</asset>
+       <asset path="ffmpeg/lib/gpl/armle-v7/libavformat.so.54">lib/libavformat.so.54</asset>
+       <asset path="ffmpeg/lib/gpl/armle-v7/libavutil.so.51">lib/libavutil.so.51</asset>
+       <asset path="libx264/lib/armle-v7/libx264.so.125">lib/libx264.so.125</asset>
     </configuration>
     <configuration id="com.qnx.qcc.toolChain.154552991" name="Simulator-Debug">
        <platformArchitecture>x86</platformArchitecture>
        <asset path="x86/o-g/FFCameraSample" entry="true" type="Qnx/Elf">FFCameraSample</asset>
-       <asset path="ffmpeg/lib/x86/libavcodec.a">lib/libavcodec.a</asset>
-       <asset path="ffmpeg/lib/x86/libavformat.a">lib/libavformat.a</asset>
-       <asset path="ffmpeg/lib/x86/libavutil.a">lib/libavutil.a</asset>
+       <asset path="ffmpeg/lib/gpl/x86/libavcodec.a">lib/libavcodec.a</asset>
+       <asset path="ffmpeg/lib/gpl/x86/libavformat.a">lib/libavformat.a</asset>
+       <asset path="ffmpeg/lib/gpl/x86/libavutil.a">lib/libavutil.a</asset>
+       <asset path="libx264/lib/x86/libx264.a">lib/libx264.a</asset>
     </configuration>
     
     <icon>

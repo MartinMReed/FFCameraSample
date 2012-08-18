@@ -26,8 +26,8 @@ simulator {
 }
 
 include($${TARGET}.pri)
-INCLUDEPATH += ../ffmpeg/include
-LIBS += -lcamapi -lscreen -L../ffmpeg/lib/$${ARCH} -lavformat -lavcodec -lavutil
+INCLUDEPATH += ../ffmpeg/include ../libx264/include
+LIBS += -lcamapi -lscreen -L../ffmpeg/lib/gpl/$${ARCH} -lavformat -lavcodec -lavutil -L../libx264/lib/$${ARCH} -lx264 
 
 OBJECTS_DIR = $${DESTDIR}/.obj
 MOC_DIR = $${DESTDIR}/.moc
