@@ -15,6 +15,8 @@
 
 #include "ffcamapi.h"
 
+#include <deque>
+#include <pthread.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 
@@ -33,7 +35,21 @@ typedef struct
 
 void* encoding_thread(void* arg);
 
-void ffcamera_init(ffcamera_context *ffc_context)
+ffcamera_context *ffcamera_alloc()
+{
+    ffcamera_context *ffc_context = (ffcamera_context*) malloc(sizeof(ffcamera_context));
+    memset(ffc_context, 0, sizeof(ffcamera_context));
+
+    ffcamera_reset(ffc_context);
+
+    ffcamera_reserved *ffc_reserved = (ffcamera_reserved*) ffc_context->reserved;
+    pthread_mutex_init(&ffc_reserved->reading_mutex, 0);
+    pthread_cond_init(&ffc_reserved->read_cond, 0);
+
+    return ffc_context;
+}
+
+void ffcamera_reset(ffcamera_context *ffc_context)
 {
     ffcamera_reserved *ffc_reserved = (ffcamera_reserved*) ffc_context->reserved;
     if (!ffc_reserved) ffc_reserved = (ffcamera_reserved*) malloc(sizeof(ffcamera_reserved));
@@ -41,9 +57,6 @@ void ffcamera_init(ffcamera_context *ffc_context)
 
     memset(ffc_context, 0, sizeof(ffcamera_context));
     ffc_context->reserved = ffc_reserved;
-
-    pthread_mutex_init(&ffc_reserved->reading_mutex, 0);
-    pthread_cond_init(&ffc_reserved->read_cond, 0);
 }
 
 ffcamera_error ffcamera_set_close_callback(ffcamera_context *ffc_context,
@@ -145,6 +158,7 @@ void* encoding_thread(void* arg)
 {
     ffcamera_context* ffc_context = (ffcamera_context*) arg;
     ffcamera_reserved *ffc_reserved = (ffcamera_reserved*) ffc_context->reserved;
+    AVCodecContext *codec_context = ffc_context->codec_context;
 
     int encode_buffer_len = 10000000;
     uint8_t *encode_buffer = (uint8_t *) av_malloc(encode_buffer_len);
@@ -153,7 +167,6 @@ void* encoding_thread(void* arg)
 
     AVPacket packet;
     int got_packet;
-    int success;
 
     while (ffc_reserved->running || !ffc_reserved->frames.empty())
     {
@@ -190,9 +203,9 @@ void* encoding_thread(void* arg)
         packet.size = encode_buffer_len;
 
         got_packet = 0;
-        success = avcodec_encode_video2(ffc_context->codec_context, &packet, frame, &got_packet);
+        int encode_result = avcodec_encode_video2(codec_context, &packet, frame, &got_packet);
 
-        if (success == 0 && got_packet > 0)
+        if (encode_result == 0 && got_packet > 0)
         {
             if (!ffc_reserved->write_callback) write_all(ffc_context->fd, packet.data, packet.size);
             else ffc_reserved->write_callback(ffc_context, packet.data, packet.size,
@@ -217,9 +230,9 @@ void* encoding_thread(void* arg)
         packet.size = encode_buffer_len;
 
         got_packet = 0;
-        success = avcodec_encode_video2(ffc_context->codec_context, &packet, NULL, &got_packet);
+        int encode_result = avcodec_encode_video2(codec_context, &packet, NULL, &got_packet);
 
-        if (success == 0 && got_packet > 0)
+        if (encode_result == 0 && got_packet > 0)
         {
             if (!ffc_reserved->write_callback) write_all(ffc_context->fd, packet.data, packet.size);
             else ffc_reserved->write_callback(ffc_context, packet.data, packet.size,
@@ -232,8 +245,8 @@ void* encoding_thread(void* arg)
     encode_buffer = NULL;
     encode_buffer_len = 0;
 
-    if (ffc_reserved->close_callback)
-    ffc_reserved->close_callback(ffc_context, ffc_reserved->close_callback_arg);
+    if (ffc_reserved->close_callback) ffc_reserved->close_callback(
+            ffc_context, ffc_reserved->close_callback_arg);
 
     return 0;
 }

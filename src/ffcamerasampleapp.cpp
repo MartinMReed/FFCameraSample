@@ -43,7 +43,7 @@ using namespace bb::cascades;
 #define FILENAME (char*)"/accounts/1000/shared/camera/VID_TEST.mpg"
 
 FFCameraSampleApp::FFCameraSampleApp()
-        : mCameraHandle(CAMERA_HANDLE_INVALID), record(false)
+        : mCameraHandle(CAMERA_HANDLE_INVALID), record(false), decode(false)
 {
     // create our foreign window
     // Using .id() in the builder is equivalent to mViewfinderWindow->setWindowId()
@@ -71,8 +71,9 @@ FFCameraSampleApp::FFCameraSampleApp()
 
     // create a bunch of camera control buttons
     // NOTE: some of these buttons are not initially visible
-    mStartFrontButton = Button::create("Front Camera");
-    mStartRearButton = Button::create("Rear Camera");
+    mStartFrontButton = Button::create("Front");
+    mStartRearButton = Button::create("Rear");
+    mStartDecoderButton = Button::create("Decode");
     mStopButton = Button::create("Stop Camera");
     mStopButton->setVisible(false);
     mStartStopButton = Button::create("Record Start");
@@ -81,6 +82,7 @@ FFCameraSampleApp::FFCameraSampleApp()
     // connect actions to the buttons
     QObject::connect(mStartFrontButton, SIGNAL(clicked()), this, SLOT(onStartFront()));
     QObject::connect(mStartRearButton, SIGNAL(clicked()), this, SLOT(onStartRear()));
+    QObject::connect(mStartDecoderButton, SIGNAL(clicked()), this, SLOT(onStartDecoder()));
     QObject::connect(mStopButton, SIGNAL(clicked()), this, SLOT(onStopCamera()));
     QObject::connect(mStartStopButton, SIGNAL(clicked()), this, SLOT(onStartStopRecording()));
     mStatusLabel = Label::create("filename");
@@ -102,13 +104,14 @@ FFCameraSampleApp::FFCameraSampleApp()
             .layout(StackLayout::create().direction(LayoutDirection::LeftToRight))
             .add(mStartFrontButton)
             .add(mStartRearButton)
+            .add(mStartDecoderButton)
             .add(mStartStopButton)
             .add(mStopButton));
 
     Application::setScene(Page::create().content(container));
 
-    ffc_context = (ffcamera_context*) malloc(sizeof(ffcamera_context));
-    memset(ffc_context, 0, sizeof(ffcamera_context));
+    ffc_context = ffcamera_alloc();
+    ffvf_context = ffviewfinder_alloc();
 }
 
 FFCameraSampleApp::~FFCameraSampleApp()
@@ -117,6 +120,9 @@ FFCameraSampleApp::~FFCameraSampleApp()
 
     ffcamera_free(ffc_context);
     ffc_context = NULL;
+
+    ffviewfinder_free(ffvf_context);
+    ffvf_context = NULL;
 }
 
 void FFCameraSampleApp::onWindowAttached(unsigned long handle, const QString &group, const QString &id)
@@ -136,6 +142,7 @@ void FFCameraSampleApp::onWindowAttached(unsigned long handle, const QString &gr
     int size[] =
             { 768, 1280 };
     screen_set_window_property_iv(win, SCREEN_PROPERTY_SIZE, size);
+    screen_set_window_property_iv(win, SCREEN_PROPERTY_SOURCE_SIZE, size);
 
     // make the window visible.  by default, the camera creates an invisible
     // viewfinder, so that the user can decide when and where to place it
@@ -189,6 +196,7 @@ int FFCameraSampleApp::createViewfinder(camera_unit_t cameraUnit, const QString 
 
     mStartFrontButton->setVisible(false);
     mStartRearButton->setVisible(false);
+    mStartDecoderButton->setVisible(false);
     mStopButton->setVisible(true);
     mStartStopButton->setText("Start Recording");
     mStartStopButton->setVisible(true);
@@ -227,29 +235,72 @@ void FFCameraSampleApp::onStopCamera()
     mStopButton->setVisible(false);
     mStartFrontButton->setVisible(true);
     mStartRearButton->setVisible(true);
+    mStartDecoderButton->setVisible(true);
 }
 
-void FFCameraSampleApp::onStartStopRecording()
+void FFCameraSampleApp::onStartDecoder()
 {
-    if (mCameraHandle == CAMERA_HANDLE_INVALID) return;
+    if (record || decode) return;
 
-    if (record)
+    file = fopen(FILENAME, "rb");
+
+    if (!file)
     {
-        record = false;
-
-        qDebug() << "stop requested";
-
-        ffcamera_stop(ffc_context);
-
-        mStartStopButton->setText("Start Recording");
-        mStopButton->setEnabled(true);
-        mStatusLabel->setVisible(false);
-
+        fprintf(stderr, "could not open %s: %d: %s\n", FILENAME, errno, strerror(errno));
         return;
     }
 
-    qDebug() << "start requested";
+    CodecID codec_id = CODEC_ID_MPEG2VIDEO;
+    AVCodec *codec = avcodec_find_decoder(codec_id);
 
+    if (!codec)
+    {
+        av_register_all();
+        codec = avcodec_find_decoder(codec_id);
+
+        if (!codec)
+        {
+            fprintf(stderr, "could not find codec\n");
+            return;
+        }
+    }
+
+    AVCodecContext *codec_context = avcodec_alloc_context3(codec);
+    codec_context->width = VIDEO_WIDTH;
+    codec_context->height = VIDEO_HEIGHT;
+    codec_context->thread_count = 2;
+
+    if (codec->capabilities & CODEC_CAP_TRUNCATED)
+    {
+        // we do not send complete frames
+        codec_context->flags |= CODEC_FLAG_TRUNCATED;
+    }
+
+    ffviewfinder_reset(ffvf_context);
+    ffviewfinder_set_close_callback(ffvf_context, ffvf_context_close, this);
+    ffviewfinder_set_frame_callback(ffvf_context, ffvf_frame_callback, this);
+    ffvf_context->codec_context = codec_context;
+    ffvf_context->fd = fileno(file);
+
+    if (avcodec_open2(codec_context, codec, NULL) < 0)
+    {
+        av_free(codec_context);
+        fprintf(stderr, "could not open codec context\n");
+        return;
+    }
+
+    if (ffviewfinder_start(ffvf_context) != FFVF_OK)
+    {
+        fprintf(stderr, "could not start ffviewfinder\n");
+        ffviewfinder_close(ffvf_context);
+        return;
+    }
+
+    decode = true;
+}
+
+void FFCameraSampleApp::start_encoder(CodecID codec_id)
+{
     struct stat buf;
     if (stat(FILENAME, &buf) != -1)
     {
@@ -265,7 +316,6 @@ void FFCameraSampleApp::onStartStopRecording()
         return;
     }
 
-    CodecID codec_id = CODEC_ID_MPEG2VIDEO;
     AVCodec *codec = avcodec_find_encoder(codec_id);
 
     if (!codec)
@@ -292,7 +342,7 @@ void FFCameraSampleApp::onStartStopRecording()
     codec_context->colorspace = AVCOL_SPC_SMPTE170M;
     codec_context->thread_count = 2;
 
-    ffcamera_init(ffc_context);
+    ffcamera_reset(ffc_context);
     ffcamera_set_close_callback(ffc_context, ffc_context_close, this);
     ffc_context->codec_context = codec_context;
     ffc_context->fd = fileno(file);
@@ -310,6 +360,33 @@ void FFCameraSampleApp::onStartStopRecording()
         ffcamera_close(ffc_context);
         return;
     }
+}
+
+void FFCameraSampleApp::onStartStopRecording()
+{
+    if (mCameraHandle == CAMERA_HANDLE_INVALID) return;
+
+    if (decode) return;
+
+    if (record)
+    {
+        record = false;
+
+        qDebug() << "stop requested";
+
+        ffcamera_stop(ffc_context);
+
+        mStartStopButton->setText("Start Recording");
+        mStopButton->setEnabled(true);
+        mStatusLabel->setVisible(false);
+
+        return;
+    }
+
+    qDebug() << "start requested";
+
+    CodecID codec_id = CODEC_ID_MPEG2VIDEO;
+    start_encoder(codec_id);
 
     record = true;
 
@@ -328,6 +405,33 @@ void vf_callback(camera_handle_t handle, camera_buffer_t* buf, void* arg)
     app->print_fps(buf);
 
     ffcamera_vfcallback(handle, buf, app->ffc_context);
+}
+
+void ffvf_frame_callback(ffviewfinder_context *ffvf_context, AVFrame *frame, int i, void *arg)
+{
+    FFCameraSampleApp* app = (FFCameraSampleApp*) arg;
+
+    qDebug() << "found frame[" << i << "]";
+
+    if (i % 100 != 0) return;
+
+    qDebug() << "SAVING frame[" << i << "]";
+
+    char filename[1024];
+    snprintf(filename, sizeof(filename), "/accounts/1000/shared/camera/VID_TEST_%d.pgm", i);
+
+    unsigned char *buf = frame->data[0];
+    int wrap = frame->linesize[0];
+    int xsize = VIDEO_WIDTH;
+    int ysize = VIDEO_HEIGHT;
+
+    FILE *f = fopen(filename, "w");
+    fprintf(f, "P5\n%d %d\n%d\n", xsize, ysize, 255);
+    for (int j = 0; j < ysize; j++)
+    {
+        fwrite(buf + j * wrap, 1, xsize, f);
+    }
+    fclose(f);
 }
 
 void FFCameraSampleApp::update_fps(camera_buffer_t* buf)
@@ -351,10 +455,26 @@ void FFCameraSampleApp::print_fps(camera_buffer_t* buf)
 
 void ffc_context_close(ffcamera_context *ffc_context, void *arg)
 {
+    qDebug() << "closing ffcamera_context";
+
     FFCameraSampleApp* app = (FFCameraSampleApp*) arg;
 
     ffcamera_close(ffc_context);
 
     fclose(app->file);
     app->file = NULL;
+}
+
+void ffvf_context_close(ffviewfinder_context *ffvf_context, void *arg)
+{
+    qDebug() << "closing ffviewfinder_context";
+
+    FFCameraSampleApp* app = (FFCameraSampleApp*) arg;
+
+    ffviewfinder_close(ffvf_context);
+
+    fclose(app->file);
+    app->file = NULL;
+
+    app->decode = false;
 }

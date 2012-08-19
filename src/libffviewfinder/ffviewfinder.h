@@ -13,8 +13,8 @@
  * limitations under the License.
  */
 
-#ifndef FFCAMAPI_H
-#define FFCAMAPI_H
+#ifndef FFVIEWFINDER_H
+#define FFVIEWFINDER_H
 
 // include math.h otherwise it will get included
 // by avformat.h and cause duplicate definition
@@ -30,16 +30,14 @@ extern "C"
 
 #include <sys/types.h>
 
-#include <camera/camera_api.h>
-
 typedef enum
 {
-    FFCAMERA_OK = 0,
-    FFCAMERA_NOT_INITIALIZED,
-    FFCAMERA_NO_CODEC_SPECIFIED,
-    FFCAMERA_ALREADY_RUNNING,
-    FFCAMERA_ALREADY_STOPPED
-} ffcamera_error;
+    FFVF_OK = 0,
+    FFVF_NOT_INITIALIZED,
+    FFVF_NO_CODEC_SPECIFIED,
+    FFVF_ALREADY_RUNNING,
+    FFVF_ALREADY_STOPPED
+} ffviewfinder_error;
 
 typedef struct
 {
@@ -59,52 +57,51 @@ typedef struct
      * For internal use. Do not use.
      */
     void *reserved;
-} ffcamera_context;
+} ffviewfinder_context;
 
 /**
  * Allocate the context with default values.
  */
-ffcamera_context *ffcamera_alloc();
+ffviewfinder_context *ffviewfinder_alloc();
 
 /**
  * Reset the context with default values.
  */
-void ffcamera_reset(ffcamera_context *ffc_context);
+void ffviewfinder_reset(ffviewfinder_context *ffvf_context);
 
-ffcamera_error ffcamera_set_write_callback(ffcamera_context *ffc_context,
-        void (*write_callback)(ffcamera_context *ffc_context, const uint8_t *buf, ssize_t size, void *arg),
+ffviewfinder_error ffviewfinder_set_frame_callback(ffviewfinder_context *ffvf_context,
+        void (*frame_callback)(ffviewfinder_context *ffvf_context, AVFrame *frame, int i, void *arg),
         void *arg);
 
-ffcamera_error ffcamera_set_close_callback(ffcamera_context *ffc_context,
-        void (*close_callback)(ffcamera_context *ffc_context, void *arg),
+ffviewfinder_error ffviewfinder_set_read_callback(ffviewfinder_context *ffvf_context,
+        int (*read_callback)(ffviewfinder_context *ffvf_context, const uint8_t *buf, ssize_t size, void *arg),
+        void *arg);
+
+ffviewfinder_error ffviewfinder_set_close_callback(ffviewfinder_context *ffvf_context,
+        void (*close_callback)(ffviewfinder_context *ffvf_context, void *arg),
         void *arg);
 
 /**
  * Close the context.
  * This will also close the AVCodecContext if not already closed.
  */
-ffcamera_error ffcamera_close(ffcamera_context *ffc_context);
+ffviewfinder_error ffviewfinder_close(ffviewfinder_context *ffvf_context);
 
 /**
  * Free the context.
  */
-ffcamera_error ffcamera_free(ffcamera_context *ffc_context);
+ffviewfinder_error ffviewfinder_free(ffviewfinder_context *ffvf_context);
 
 /**
  * Start recording and encoding the camera frames.
  * Encoding will begin on a background thread.
  */
-ffcamera_error ffcamera_start(ffcamera_context *ffc_context);
+ffviewfinder_error ffviewfinder_start(ffviewfinder_context *ffvf_context);
 
 /**
  * Stop recording frames. Once all recorded frames have been encoded
  * the background thread will die.
  */
-ffcamera_error ffcamera_stop(ffcamera_context *ffc_context);
-
-/**
- * The ViewFinder callback to pass into camera_start_video_viewfinder.
- */
-void ffcamera_vfcallback(camera_handle_t handle, camera_buffer_t* buf, void* arg);
+ffviewfinder_error ffviewfinder_stop(ffviewfinder_context *ffvf_context);
 
 #endif
