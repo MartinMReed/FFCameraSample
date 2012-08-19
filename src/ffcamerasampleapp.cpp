@@ -49,6 +49,8 @@ FFCameraSampleApp::FFCameraSampleApp()
     // Using .id() in the builder is equivalent to mViewfinderWindow->setWindowId()
     mViewfinderWindow = ForeignWindow::create().id(QString("cameraViewfinder"));
 
+    createForeignWindow(ForeignWindow::mainWindowGroupId(), "HelloForeignWindowAppID");
+
     // NOTE that there is a bug in ForeignWindow in 10.0.6 whereby the
     // SCREEN_PROPERTY_SOURCE_SIZE is updated when windows are attached.
     // We don't want this to happen, so we are disabling WindowFrameUpdates.
@@ -114,6 +116,74 @@ FFCameraSampleApp::FFCameraSampleApp()
     ffvf_context = ffviewfinder_alloc();
 }
 
+bool FFCameraSampleApp::createForeignWindow(const QString &group, const QString id)
+{
+    QByteArray groupArr = group.toAscii();
+    QByteArray idArr = id.toAscii();
+
+    // You must create a context before you create a window.
+    screen_create_context(&mScreenCtx, SCREEN_APPLICATION_CONTEXT);
+
+    // Create a child window of the current window group, join the window group and set
+    // a window id.
+    screen_create_window_type(&mScreenWindow, mScreenCtx, SCREEN_CHILD_WINDOW);
+    screen_join_window_group(mScreenWindow, groupArr.constData());
+    screen_set_window_property_cv(mScreenWindow, SCREEN_PROPERTY_ID_STRING, idArr.length(), idArr.constData());
+
+    // In this application we will render to a pixmap buffer and then blit that to
+    // the window, we set the usage to native (default is read and write but we do not need that here).
+    int usage = SCREEN_USAGE_NATIVE;
+    screen_set_window_property_iv(mScreenWindow, SCREEN_PROPERTY_USAGE, &usage);
+
+    int video_size[2] =
+            { VIDEO_WIDTH, VIDEO_HEIGHT };
+    screen_set_window_property_iv(mScreenWindow, SCREEN_PROPERTY_BUFFER_SIZE, video_size);
+    screen_set_window_property_iv(mScreenWindow, SCREEN_PROPERTY_SOURCE_SIZE, video_size);
+
+    // Use negative Z order so that the window appears under the main window.
+    // This is needed by the ForeignWindow functionality.
+    int z = -1;
+    screen_set_window_property_iv(mScreenWindow, SCREEN_PROPERTY_ZORDER, &z);
+
+    // Set the window position on screen.
+    int pos[2] =
+            { 0, 0 };
+    screen_set_window_property_iv(mScreenWindow, SCREEN_PROPERTY_POSITION, pos);
+
+    // Finally create the window buffers, in this application we will only use one buffer.
+    screen_create_window_buffers(mScreenWindow, 1);
+
+    // In this sample we use a pixmap to render to, a pixmap. This allows us to have
+    // full control of exactly which pixels we choose to push to the screen.
+    screen_pixmap_t screen_pix;
+    screen_create_pixmap(&screen_pix, mScreenCtx);
+
+    // A combination of write and native usage is necessary to blit the pixmap to screen.
+    usage = SCREEN_USAGE_WRITE | SCREEN_USAGE_NATIVE;
+    screen_set_pixmap_property_iv(screen_pix, SCREEN_PROPERTY_USAGE, &usage);
+
+    int format = SCREEN_FORMAT_YUV420;
+    screen_set_pixmap_property_iv(screen_pix, SCREEN_PROPERTY_FORMAT, &format);
+
+    // Set the width and height of the buffer to correspond to the one we specified in QML.
+    screen_set_pixmap_property_iv(screen_pix, SCREEN_PROPERTY_BUFFER_SIZE, video_size);
+
+    // Create the pixmap buffer and get a reference to it for rendering in the doNoise function.
+    screen_create_pixmap_buffer(screen_pix);
+    screen_get_pixmap_property_pv(screen_pix, SCREEN_PROPERTY_RENDER_BUFFERS, (void **) &mScreenPixelBuffer);
+
+    // We get the stride (the number of bytes between pixels on different rows), its used
+    // later on when we perform the rendering to the pixmap buffer.
+    screen_get_buffer_property_iv(mScreenPixelBuffer, SCREEN_PROPERTY_STRIDE, &mStride);
+
+//    // scale the window to be fullscreen
+//    int window_size[] =
+//            { 768, 1280 };
+//    screen_set_window_property_iv(mScreenWindow, SCREEN_PROPERTY_SIZE, window_size);
+
+    return true;
+}
+
 FFCameraSampleApp::~FFCameraSampleApp()
 {
     delete mViewfinderWindow;
@@ -135,14 +205,13 @@ void FFCameraSampleApp::onWindowAttached(unsigned long handle, const QString &gr
     screen_set_window_property_iv(win, SCREEN_PROPERTY_MIRROR, &i);
 
     // put the viewfinder window behind the cascades window
-    i = -1;
+    i = -2;
     screen_set_window_property_iv(win, SCREEN_PROPERTY_ZORDER, &i);
 
     // scale the viewfinder window to fit the display
     int size[] =
             { 768, 1280 };
     screen_set_window_property_iv(win, SCREEN_PROPERTY_SIZE, size);
-    screen_set_window_property_iv(win, SCREEN_PROPERTY_SOURCE_SIZE, size);
 
     // make the window visible.  by default, the camera creates an invisible
     // viewfinder, so that the user can decide when and where to place it
@@ -218,6 +287,7 @@ void FFCameraSampleApp::onStartRear()
     const QString windowGroup = mViewfinderWindow->windowGroup();
     const QString windowId = mViewfinderWindow->windowId();
     createViewfinder(CAMERA_UNIT_REAR, windowGroup, windowId);
+    onStartDecoder();
 }
 
 void FFCameraSampleApp::onStopCamera()
@@ -241,6 +311,13 @@ void FFCameraSampleApp::onStopCamera()
 void FFCameraSampleApp::onStartDecoder()
 {
     if (record || decode) return;
+
+    struct stat buf;
+    if (stat(FILENAME, &buf) == -1)
+    {
+        fprintf(stderr, "file not found %s\n", FILENAME);
+        return;
+    }
 
     file = fopen(FILENAME, "rb");
 
@@ -266,6 +343,7 @@ void FFCameraSampleApp::onStartDecoder()
     }
 
     AVCodecContext *codec_context = avcodec_alloc_context3(codec);
+    codec_context->pix_fmt = PIX_FMT_YUV420P;
     codec_context->width = VIDEO_WIDTH;
     codec_context->height = VIDEO_HEIGHT;
     codec_context->thread_count = 2;
@@ -407,31 +485,60 @@ void vf_callback(camera_handle_t handle, camera_buffer_t* buf, void* arg)
     ffcamera_vfcallback(handle, buf, app->ffc_context);
 }
 
+void FFCameraSampleApp::show_frame(AVFrame *frame)
+{
+    unsigned char *ptr = NULL;
+
+    int width = frame->width;
+    int height = frame->height;
+
+    int blitParameters[] =
+            { SCREEN_BLIT_SOURCE_WIDTH, width, SCREEN_BLIT_SOURCE_HEIGHT, height, SCREEN_BLIT_END };
+
+    screen_get_buffer_property_pv(mScreenPixelBuffer, SCREEN_PROPERTY_POINTER, (void**) &ptr);
+
+    uint8_t *srcy = frame->data[0];
+    uint8_t *srcu = frame->data[1];
+    uint8_t *srcv = frame->data[2];
+
+    unsigned char *y = ptr;
+    unsigned char *u = y + (height * mStride);
+    unsigned char *v = u + ((height / 2) * (mStride / 2));
+
+    for (int i = 0; i < height; i++)
+    {
+        int doff = i * mStride;
+        int soff = i * frame->linesize[0];
+        memcpy(&y[doff], &srcy[soff], frame->width);
+    }
+
+    for (int i = 0; i < height / 2; i++)
+    {
+        int doff = i * mStride / 2;
+        int soff = i * frame->linesize[1];
+        memcpy(&u[doff], &srcu[soff], frame->width / 2);
+    }
+
+    for (int i = 0; i < height / 2; i++)
+    {
+        int doff = i * mStride / 2;
+        int soff = i * frame->linesize[2];
+        memcpy(&v[doff], &srcv[soff], frame->width / 2);
+    }
+
+    // Get the window buffer, blit the pixels to it and post the window update.
+    screen_get_window_property_pv(mScreenWindow, SCREEN_PROPERTY_RENDER_BUFFERS, (void**) mScreenBuf);
+    screen_blit(mScreenCtx, mScreenBuf[0], mScreenPixelBuffer, blitParameters);
+
+    int dirty_rects[4] =
+            { 0, 0, width, height };
+    screen_post_window(mScreenWindow, mScreenBuf[0], 1, dirty_rects, 0);
+}
+
 void ffvf_frame_callback(ffviewfinder_context *ffvf_context, AVFrame *frame, int i, void *arg)
 {
     FFCameraSampleApp* app = (FFCameraSampleApp*) arg;
-
-    qDebug() << "found frame[" << i << "]";
-
-    if (i % 100 != 0) return;
-
-    qDebug() << "SAVING frame[" << i << "]";
-
-    char filename[1024];
-    snprintf(filename, sizeof(filename), "/accounts/1000/shared/camera/VID_TEST_%d.pgm", i);
-
-    unsigned char *buf = frame->data[0];
-    int wrap = frame->linesize[0];
-    int xsize = VIDEO_WIDTH;
-    int ysize = VIDEO_HEIGHT;
-
-    FILE *f = fopen(filename, "w");
-    fprintf(f, "P5\n%d %d\n%d\n", xsize, ysize, 255);
-    for (int j = 0; j < ysize; j++)
-    {
-        fwrite(buf + j * wrap, 1, xsize, f);
-    }
-    fclose(f);
+    app->show_frame(frame);
 }
 
 void FFCameraSampleApp::update_fps(camera_buffer_t* buf)

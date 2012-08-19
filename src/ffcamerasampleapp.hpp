@@ -53,6 +53,8 @@ Q_OBJECT
     void onStopCamera();
     void onStartStopRecording();
 
+    bool createForeignWindow(const QString &group, const QString id);
+
 public:
 
     FFCameraSampleApp();
@@ -64,6 +66,7 @@ private:
 
     void update_fps(camera_buffer_t* buf);
     void print_fps(camera_buffer_t* buf);
+    void show_frame(AVFrame *frame);
 
     void start_encoder(CodecID codec_id);
     void start_decoder(CodecID codec_id);
@@ -83,6 +86,12 @@ private:
     std::deque<int64_t> fps;
     ffcamera_context *ffc_context;
     ffviewfinder_context *ffvf_context;
+
+    screen_context_t mScreenCtx;
+    screen_window_t mScreenWindow;
+    screen_buffer_t mScreenBuf[1];
+    screen_buffer_t mScreenPixelBuffer;
+    int mStride;
 };
 
 #endif
