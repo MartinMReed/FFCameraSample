@@ -115,7 +115,7 @@ FFCameraSampleApp::~FFCameraSampleApp()
 {
     delete mViewfinderWindow;
 
-    free(ffc_context);
+    ffcamera_free(ffc_context);
     ffc_context = NULL;
 }
 
@@ -133,7 +133,8 @@ void FFCameraSampleApp::onWindowAttached(unsigned long handle, const QString &gr
     screen_set_window_property_iv(win, SCREEN_PROPERTY_ZORDER, &i);
 
     // scale the viewfinder window to fit the display
-    int size[] = {768, 1280};
+    int size[] =
+            { 768, 1280 };
     screen_set_window_property_iv(win, SCREEN_PROPERTY_SIZE, size);
 
     // make the window visible.  by default, the camera creates an invisible
@@ -260,19 +261,55 @@ void FFCameraSampleApp::onStartStopRecording()
 
     if (!file)
     {
-        fprintf(stderr, "could not open %s: %d: %s\n", FILENAME, errno,strerror(errno));
-        exit(1);
+        fprintf(stderr, "could not open %s: %d: %s\n", FILENAME, errno, strerror(errno));
         return;
     }
 
-    AVCodecContext *codec_context = NULL;
-    ffcamera_default_codec(CODEC_ID_MPEG2VIDEO, VIDEO_WIDTH, VIDEO_HEIGHT, &codec_context);
+    CodecID codec_id = CODEC_ID_MPEG2VIDEO;
+    AVCodec *codec = avcodec_find_encoder(codec_id);
+
+    if (!codec)
+    {
+        av_register_all();
+        codec = avcodec_find_encoder(codec_id);
+
+        if (!codec)
+        {
+            fprintf(stderr, "could not find codec\n");
+            return;
+        }
+    }
+
+    AVCodecContext *codec_context = avcodec_alloc_context3(codec);
+    codec_context->pix_fmt = PIX_FMT_YUV420P;
+    codec_context->width = VIDEO_WIDTH;
+    codec_context->height = VIDEO_HEIGHT;
+    codec_context->bit_rate = 400000;
+    codec_context->time_base.num = 1;
+    codec_context->time_base.den = 30;
+    codec_context->ticks_per_frame = 2;
+    codec_context->gop_size = 15;
+    codec_context->colorspace = AVCOL_SPC_SMPTE170M;
+    codec_context->thread_count = 2;
 
     ffcamera_init(ffc_context);
     ffcamera_set_close_callback(ffc_context, ffc_context_close, this);
     ffc_context->codec_context = codec_context;
     ffc_context->fd = fileno(file);
-    ffcamera_start(ffc_context);
+
+    if (avcodec_open2(codec_context, codec, NULL) < 0)
+    {
+        av_free(codec_context);
+        fprintf(stderr, "could not open codec context\n");
+        return;
+    }
+
+    if (ffcamera_start(ffc_context) != FFCAMERA_OK)
+    {
+        fprintf(stderr, "could not start ffcamera\n");
+        ffcamera_close(ffc_context);
+        return;
+    }
 
     record = true;
 
