@@ -37,6 +37,8 @@ typedef enum
     FFENC_OK = 0,
     FFENC_NOT_INITIALIZED,
     FFENC_NO_CODEC_SPECIFIED,
+    FFENC_FRAME_NOT_SUPPORTED,
+    FFENC_NOT_RUNNING,
     FFENC_ALREADY_RUNNING,
     FFENC_ALREADY_STOPPED
 } ffenc_error;
@@ -95,6 +97,16 @@ ffenc_error ffenc_start(ffenc_context *ffe_context);
  */
 ffenc_error ffenc_stop(ffenc_context *ffe_context);
 
-void ffenc_add_frame(ffenc_context *ffe_context, camera_buffer_t* buf);
+/**
+ * Add an AVFrame. The frame and frame->data[0] passed into this
+ * method will be freed by the encoding thread.
+ */
+ffenc_error ffenc_add_frame(ffenc_context *ffe_context, AVFrame *frame);
+
+/**
+ * Add a frame from the native camera API.
+ * This should have a buf->frametype of CAMERA_FRAMETYPE_NV12.
+ */
+ffenc_error ffenc_add_frame(ffenc_context *ffe_context, camera_buffer_t* buf);
 
 #endif

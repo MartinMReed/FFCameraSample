@@ -58,6 +58,10 @@ ffdec_context *ffdec_alloc()
 void ffdec_reset(ffdec_context *ffd_context)
 {
     ffdec_reserved *ffd_reserved = (ffdec_reserved*) ffd_context->reserved;
+
+    // don't carry over the view, it needs to be recreated
+    if (ffd_reserved->view) free(ffd_reserved->view);
+
     if (!ffd_reserved) ffd_reserved = (ffdec_reserved*) malloc(sizeof(ffdec_reserved));
     memset(ffd_reserved, 0, sizeof(ffdec_reserved));
 
@@ -121,6 +125,7 @@ ffdec_error ffdec_free(ffdec_context *ffd_context)
     if (ffd_context->reserved)
     {
         ffdec_reserved *ffd_reserved = (ffdec_reserved*) ffd_context->reserved;
+
         if (ffd_reserved->view) free(ffd_reserved->view);
         ffd_reserved->view = NULL;
 

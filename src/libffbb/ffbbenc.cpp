@@ -211,13 +211,23 @@ void* encoding_thread(void* arg)
     return 0;
 }
 
-void ffenc_add_frame(ffenc_context *ffe_context, camera_buffer_t* buf)
+ffenc_error ffenc_add_frame(ffenc_context *ffe_context, AVFrame *frame)
 {
-    if (buf->frametype != CAMERA_FRAMETYPE_NV12) return;
+    ffenc_reserved *ffe_reserved = (ffenc_reserved*) ffe_context->reserved;
+    if (!ffe_reserved) return FFENC_NOT_INITIALIZED;
+    if (!ffe_reserved->running) return FFENC_NOT_RUNNING;
+    ffe_reserved->frames.push_back(frame);
+    pthread_cond_signal(&ffe_reserved->read_cond);
+    return FFENC_OK;
+}
+
+ffenc_error ffenc_add_frame(ffenc_context *ffe_context, camera_buffer_t* buf)
+{
+    if (buf->frametype != CAMERA_FRAMETYPE_NV12) return FFENC_FRAME_NOT_SUPPORTED;
 
     ffenc_reserved *ffe_reserved = (ffenc_reserved*) ffe_context->reserved;
-
-    if (!ffe_reserved || !ffe_reserved->running) return;
+    if (!ffe_reserved) return FFENC_NOT_INITIALIZED;
+    if (!ffe_reserved->running) return FFENC_NOT_RUNNING;
 
     int64_t uv_offset = buf->framedesc.nv12.uv_offset;
     uint32_t height = buf->framedesc.nv12.height;
@@ -264,5 +274,7 @@ void ffenc_add_frame(ffenc_context *ffe_context, camera_buffer_t* buf)
     ffe_reserved->frames.push_back(frame);
 
     pthread_cond_signal(&ffe_reserved->read_cond);
+
+    return FFENC_OK;
 }
 
