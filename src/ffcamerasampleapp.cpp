@@ -131,22 +131,21 @@ void FFCameraSampleApp::onWindowAttached(unsigned long handle, const QString &gr
     screen_window_t win = (screen_window_t) handle;
 
     // set screen properties to mirror if this is the front-facing camera
-    int i = (mCameraUnit == CAMERA_UNIT_FRONT);
-    screen_set_window_property_iv(win, SCREEN_PROPERTY_MIRROR, &i);
+    int mirror = mCameraUnit == CAMERA_UNIT_FRONT;
+    screen_set_window_property_iv(win, SCREEN_PROPERTY_MIRROR, &mirror);
 
     // put the viewfinder window behind the cascades window
-    i = -2;
-    screen_set_window_property_iv(win, SCREEN_PROPERTY_ZORDER, &i);
+    int z = -2;
+    screen_set_window_property_iv(win, SCREEN_PROPERTY_ZORDER, &z);
 
     // scale the viewfinder window to fit the display
-    int size[] =
-            { 768, 1280 };
+    int size[] = { 768, 1280 };
     screen_set_window_property_iv(win, SCREEN_PROPERTY_SIZE, size);
 
     // make the window visible.  by default, the camera creates an invisible
     // viewfinder, so that the user can decide when and where to place it
-    i = 1;
-    screen_set_window_property_iv(win, SCREEN_PROPERTY_VISIBLE, &i);
+    int visible = 1;
+    screen_set_window_property_iv(win, SCREEN_PROPERTY_VISIBLE, &visible);
 
     // There is a bug in ForeignWindow in 10.0.6 which defers window context
     // flushing until some future UI update.  As a result, the window will
@@ -298,9 +297,7 @@ void FFCameraSampleApp::onStartDecoder()
     screen_window_t window;
     ffdec_create_view(ffd_context, ForeignWindow::mainWindowGroupId(), "HelloForeignWindowAppID", &window);
 
-    int window_size[2];
-    window_size[0] = 768;
-    window_size[1] = 1280;
+    int window_size[] = { 768, 1280 };
     screen_set_window_property_iv(window, SCREEN_PROPERTY_SIZE, window_size);
 
     if (ffdec_start(ffd_context) != FFDEC_OK)

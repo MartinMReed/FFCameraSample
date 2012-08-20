@@ -27,7 +27,7 @@
 <setting id="org.eclipse.cdt.core.formatter.comment.min_distance_between_code_and_line_comment" value="1"/>
 <setting id="org.eclipse.cdt.core.formatter.insert_space_after_comma_in_array_initializer" value="insert"/>
 <setting id="org.eclipse.cdt.core.formatter.insert_space_after_comma_in_enum_declarations" value="insert"/>
-<setting id="org.eclipse.cdt.core.formatter.alignment_for_expressions_in_array_initializer" value="16"/>
+<setting id="org.eclipse.cdt.core.formatter.alignment_for_expressions_in_array_initializer" value="0"/>
 <setting id="org.eclipse.cdt.core.formatter.insert_space_after_comma_in_declarator_list" value="insert"/>
 <setting id="org.eclipse.cdt.core.formatter.insert_space_before_opening_bracket" value="do not insert"/>
 <setting id="org.eclipse.cdt.core.formatter.insert_space_before_closing_paren_in_for" value="do not insert"/>
@@ -152,7 +152,7 @@
 <setting id="org.eclipse.cdt.core.formatter.insert_space_before_comma_in_enum_declarations" value="do not insert"/>
 <setting id="org.eclipse.cdt.core.formatter.insert_space_after_prefix_operator" value="do not insert"/>
 <setting id="org.eclipse.cdt.core.formatter.insert_space_before_closing_angle_bracket_in_template_arguments" value="do not insert"/>
-<setting id="org.eclipse.cdt.core.formatter.brace_position_for_array_initializer" value="next_line"/>
+<setting id="org.eclipse.cdt.core.formatter.brace_position_for_array_initializer" value="end_of_line"/>
 <setting id="org.eclipse.cdt.core.formatter.insert_space_before_colon_in_case" value="do not insert"/>
 <setting id="org.eclipse.cdt.core.formatter.insert_space_before_opening_paren_in_catch" value="insert"/>
 <setting id="org.eclipse.cdt.core.formatter.insert_space_before_opening_brace_in_namespace_declaration" value="insert"/>

@@ -277,18 +277,14 @@ ffdec_error ffdec_create_view(ffdec_context *ffd_context, QString group, QString
     int usage = SCREEN_USAGE_NATIVE;
     screen_set_window_property_iv(screen_window, SCREEN_PROPERTY_USAGE, &usage);
 
-    int video_size[2];
-    video_size[0] = codec_context->width;
-    video_size[1] = codec_context->height;
+    int video_size[] = { codec_context->width, codec_context->height };
     screen_set_window_property_iv(screen_window, SCREEN_PROPERTY_BUFFER_SIZE, video_size);
     screen_set_window_property_iv(screen_window, SCREEN_PROPERTY_SOURCE_SIZE, video_size);
 
     int z = -1;
     screen_set_window_property_iv(screen_window, SCREEN_PROPERTY_ZORDER, &z);
 
-    int pos[2];
-    pos[0] = 0;
-    pos[1] = 0;
+    int pos[] = { 0, 0 };
     screen_set_window_property_iv(screen_window, SCREEN_PROPERTY_POSITION, pos);
 
     screen_create_window_buffers(screen_window, 1);
@@ -371,14 +367,9 @@ void display_frame(ffdec_context *ffd_context, AVFrame *frame)
     screen_buffer_t screen_buffer[1];
     screen_get_window_property_pv(screen_window, SCREEN_PROPERTY_RENDER_BUFFERS, (void**) screen_buffer);
 
-    int attribs[] =
-            { SCREEN_BLIT_SOURCE_WIDTH, width, SCREEN_BLIT_SOURCE_HEIGHT, height, SCREEN_BLIT_END };
+    int attribs[] = { SCREEN_BLIT_SOURCE_WIDTH, width, SCREEN_BLIT_SOURCE_HEIGHT, height, SCREEN_BLIT_END };
     screen_blit(screen_context, screen_buffer[0], screen_pixel_buffer, attribs);
 
-    int dirty_rects[4];
-    dirty_rects[0] = 0;
-    dirty_rects[1] = 0;
-    dirty_rects[2] = width;
-    dirty_rects[3] = height;
+    int dirty_rects[] = { 0, 0, width, height };
     screen_post_window(screen_window, screen_buffer[0], 1, dirty_rects, 0);
 }
