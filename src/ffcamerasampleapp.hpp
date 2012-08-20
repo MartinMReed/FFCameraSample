@@ -23,24 +23,27 @@
 #include <bb/cascades/Button>
 #include <bb/cascades/Label>
 
-#include "libffcamapi/ffcamapi.h"
-#include "libffviewfinder/ffviewfinder.h"
+#include "libffbb/ffbbenc.h"
+#include "libffbb/ffbbdec.h"
 #include <deque>
 
 using namespace bb::cascades;
 
-void ffvf_context_close(ffviewfinder_context *ffvf_context, void *arg);
-void ffvf_frame_callback(ffviewfinder_context *ffvf_context, AVFrame *frame, int i, void *arg);
+void ffd_context_close(ffdec_context *ffd_context, void *arg);
+int ffd_read_callback(ffdec_context *ffd_context, uint8_t *buf, ssize_t size, void *arg);
 
-void ffc_context_close(ffcamera_context *ffc_context, void *arg);
+void ffe_context_close(ffenc_context *ffe_context, void *arg);
 void vf_callback(camera_handle_t handle, camera_buffer_t* buf, void* arg);
+void ffe_write_callback(ffenc_context *ffe_context, uint8_t *buf, ssize_t size, void *arg);
 
 class FFCameraSampleApp : public QObject
 {
-    friend void ffvf_context_close(ffviewfinder_context *ffvf_context, void *arg);
-    friend void ffvf_frame_callback(ffviewfinder_context *ffvf_context, AVFrame *frame, int i, void *arg);
-    friend void ffc_context_close(ffcamera_context *ffc_context, void *arg);
+    friend void ffd_context_close(ffdec_context *ffd_context, void *arg);
+    friend int ffd_read_callback(ffdec_context *ffd_context, uint8_t *buf, ssize_t size, void *arg);
+
+    friend void ffe_context_close(ffenc_context *ffe_context, void *arg);
     friend void vf_callback(camera_handle_t handle, camera_buffer_t* buf, void* arg);
+    friend void ffe_write_callback(ffenc_context *ffe_context, uint8_t *buf, ssize_t size, void *arg);
 
 Q_OBJECT
     public slots:
@@ -53,7 +56,7 @@ Q_OBJECT
     void onStopCamera();
     void onStartStopRecording();
 
-    bool createForeignWindow(const QString &group, const QString id);
+    bool createForeignWindow(QString group, QString id);
 
 public:
 
@@ -84,14 +87,8 @@ private:
     FILE *file;
     bool record, decode;
     std::deque<int64_t> fps;
-    ffcamera_context *ffc_context;
-    ffviewfinder_context *ffvf_context;
-
-    screen_context_t mScreenCtx;
-    screen_window_t mScreenWindow;
-    screen_buffer_t mScreenBuf[1];
-    screen_buffer_t mScreenPixelBuffer;
-    int mStride;
+    ffenc_context *ffe_context;
+    ffdec_context *ffd_context;
 };
 
 #endif

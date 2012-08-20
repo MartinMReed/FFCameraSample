@@ -49,8 +49,6 @@ FFCameraSampleApp::FFCameraSampleApp()
     // Using .id() in the builder is equivalent to mViewfinderWindow->setWindowId()
     mViewfinderWindow = ForeignWindow::create().id(QString("cameraViewfinder"));
 
-    createForeignWindow(ForeignWindow::mainWindowGroupId(), "HelloForeignWindowAppID");
-
     // NOTE that there is a bug in ForeignWindow in 10.0.6 whereby the
     // SCREEN_PROPERTY_SOURCE_SIZE is updated when windows are attached.
     // We don't want this to happen, so we are disabling WindowFrameUpdates.
@@ -112,74 +110,20 @@ FFCameraSampleApp::FFCameraSampleApp()
 
     Application::setScene(Page::create().content(container));
 
-    ffc_context = ffcamera_alloc();
-    ffvf_context = ffviewfinder_alloc();
+    ffe_context = ffenc_alloc();
+    ffd_context = ffdec_alloc();
+
+    createForeignWindow(ForeignWindow::mainWindowGroupId(), "HelloForeignWindowAppID");
 }
 
-bool FFCameraSampleApp::createForeignWindow(const QString &group, const QString id)
+bool FFCameraSampleApp::createForeignWindow(QString group, QString id)
 {
-    QByteArray groupArr = group.toAscii();
-    QByteArray idArr = id.toAscii();
+    screen_window_t window;
+    ffdec_viewfinder(ffd_context, group, id, &window);
 
-    // You must create a context before you create a window.
-    screen_create_context(&mScreenCtx, SCREEN_APPLICATION_CONTEXT);
-
-    // Create a child window of the current window group, join the window group and set
-    // a window id.
-    screen_create_window_type(&mScreenWindow, mScreenCtx, SCREEN_CHILD_WINDOW);
-    screen_join_window_group(mScreenWindow, groupArr.constData());
-    screen_set_window_property_cv(mScreenWindow, SCREEN_PROPERTY_ID_STRING, idArr.length(), idArr.constData());
-
-    // In this application we will render to a pixmap buffer and then blit that to
-    // the window, we set the usage to native (default is read and write but we do not need that here).
-    int usage = SCREEN_USAGE_NATIVE;
-    screen_set_window_property_iv(mScreenWindow, SCREEN_PROPERTY_USAGE, &usage);
-
-    int video_size[2] =
-            { VIDEO_WIDTH, VIDEO_HEIGHT };
-    screen_set_window_property_iv(mScreenWindow, SCREEN_PROPERTY_BUFFER_SIZE, video_size);
-    screen_set_window_property_iv(mScreenWindow, SCREEN_PROPERTY_SOURCE_SIZE, video_size);
-
-    // Use negative Z order so that the window appears under the main window.
-    // This is needed by the ForeignWindow functionality.
-    int z = -1;
-    screen_set_window_property_iv(mScreenWindow, SCREEN_PROPERTY_ZORDER, &z);
-
-    // Set the window position on screen.
-    int pos[2] =
-            { 0, 0 };
-    screen_set_window_property_iv(mScreenWindow, SCREEN_PROPERTY_POSITION, pos);
-
-    // Finally create the window buffers, in this application we will only use one buffer.
-    screen_create_window_buffers(mScreenWindow, 1);
-
-    // In this sample we use a pixmap to render to, a pixmap. This allows us to have
-    // full control of exactly which pixels we choose to push to the screen.
-    screen_pixmap_t screen_pix;
-    screen_create_pixmap(&screen_pix, mScreenCtx);
-
-    // A combination of write and native usage is necessary to blit the pixmap to screen.
-    usage = SCREEN_USAGE_WRITE | SCREEN_USAGE_NATIVE;
-    screen_set_pixmap_property_iv(screen_pix, SCREEN_PROPERTY_USAGE, &usage);
-
-    int format = SCREEN_FORMAT_YUV420;
-    screen_set_pixmap_property_iv(screen_pix, SCREEN_PROPERTY_FORMAT, &format);
-
-    // Set the width and height of the buffer to correspond to the one we specified in QML.
-    screen_set_pixmap_property_iv(screen_pix, SCREEN_PROPERTY_BUFFER_SIZE, video_size);
-
-    // Create the pixmap buffer and get a reference to it for rendering in the doNoise function.
-    screen_create_pixmap_buffer(screen_pix);
-    screen_get_pixmap_property_pv(screen_pix, SCREEN_PROPERTY_RENDER_BUFFERS, (void **) &mScreenPixelBuffer);
-
-    // We get the stride (the number of bytes between pixels on different rows), its used
-    // later on when we perform the rendering to the pixmap buffer.
-    screen_get_buffer_property_iv(mScreenPixelBuffer, SCREEN_PROPERTY_STRIDE, &mStride);
-
-//    // scale the window to be fullscreen
-//    int window_size[] =
-//            { 768, 1280 };
-//    screen_set_window_property_iv(mScreenWindow, SCREEN_PROPERTY_SIZE, window_size);
+    int window_size[] =
+            { 768, 1280 };
+    screen_set_window_property_iv(window, SCREEN_PROPERTY_SIZE, window_size);
 
     return true;
 }
@@ -188,11 +132,11 @@ FFCameraSampleApp::~FFCameraSampleApp()
 {
     delete mViewfinderWindow;
 
-    ffcamera_free(ffc_context);
-    ffc_context = NULL;
+    ffenc_free(ffe_context);
+    ffe_context = NULL;
 
-    ffviewfinder_free(ffvf_context);
-    ffvf_context = NULL;
+    ffdec_free(ffd_context);
+    ffd_context = NULL;
 }
 
 void FFCameraSampleApp::onWindowAttached(unsigned long handle, const QString &group, const QString &id)
@@ -354,11 +298,10 @@ void FFCameraSampleApp::onStartDecoder()
         codec_context->flags |= CODEC_FLAG_TRUNCATED;
     }
 
-    ffviewfinder_reset(ffvf_context);
-    ffviewfinder_set_close_callback(ffvf_context, ffvf_context_close, this);
-    ffviewfinder_set_frame_callback(ffvf_context, ffvf_frame_callback, this);
-    ffvf_context->codec_context = codec_context;
-    ffvf_context->fd = fileno(file);
+    ffdec_reset(ffd_context);
+    ffdec_set_close_callback(ffd_context, ffd_context_close, this);
+    ffdec_set_read_callback(ffd_context, ffd_read_callback, file);
+    ffd_context->codec_context = codec_context;
 
     if (avcodec_open2(codec_context, codec, NULL) < 0)
     {
@@ -367,10 +310,10 @@ void FFCameraSampleApp::onStartDecoder()
         return;
     }
 
-    if (ffviewfinder_start(ffvf_context) != FFVF_OK)
+    if (ffdec_start(ffd_context) != FFDEC_OK)
     {
-        fprintf(stderr, "could not start ffviewfinder\n");
-        ffviewfinder_close(ffvf_context);
+        fprintf(stderr, "could not start ffdec\n");
+        ffdec_close(ffd_context);
         return;
     }
 
@@ -420,10 +363,10 @@ void FFCameraSampleApp::start_encoder(CodecID codec_id)
     codec_context->colorspace = AVCOL_SPC_SMPTE170M;
     codec_context->thread_count = 2;
 
-    ffcamera_reset(ffc_context);
-    ffcamera_set_close_callback(ffc_context, ffc_context_close, this);
-    ffc_context->codec_context = codec_context;
-    ffc_context->fd = fileno(file);
+    ffenc_reset(ffe_context);
+    ffenc_set_close_callback(ffe_context, ffe_context_close, this);
+    ffenc_set_write_callback(ffe_context, ffe_write_callback, file);
+    ffe_context->codec_context = codec_context;
 
     if (avcodec_open2(codec_context, codec, NULL) < 0)
     {
@@ -432,10 +375,10 @@ void FFCameraSampleApp::start_encoder(CodecID codec_id)
         return;
     }
 
-    if (ffcamera_start(ffc_context) != FFCAMERA_OK)
+    if (ffenc_start(ffe_context) != FFENC_OK)
     {
-        fprintf(stderr, "could not start ffcamera\n");
-        ffcamera_close(ffc_context);
+        fprintf(stderr, "could not start ffenc\n");
+        ffenc_close(ffe_context);
         return;
     }
 }
@@ -452,7 +395,7 @@ void FFCameraSampleApp::onStartStopRecording()
 
         qDebug() << "stop requested";
 
-        ffcamera_stop(ffc_context);
+        ffenc_stop(ffe_context);
 
         mStartStopButton->setText("Start Recording");
         mStopButton->setEnabled(true);
@@ -482,63 +425,17 @@ void vf_callback(camera_handle_t handle, camera_buffer_t* buf, void* arg)
     app->update_fps(buf);
     app->print_fps(buf);
 
-    ffcamera_vfcallback(handle, buf, app->ffc_context);
+    ffenc_add_frame(app->ffe_context, buf);
 }
 
-void FFCameraSampleApp::show_frame(AVFrame *frame)
+int ffd_read_callback(ffdec_context *ffd_context, uint8_t *buf, ssize_t size, void *arg)
 {
-    unsigned char *ptr = NULL;
-
-    int width = frame->width;
-    int height = frame->height;
-
-    int blitParameters[] =
-            { SCREEN_BLIT_SOURCE_WIDTH, width, SCREEN_BLIT_SOURCE_HEIGHT, height, SCREEN_BLIT_END };
-
-    screen_get_buffer_property_pv(mScreenPixelBuffer, SCREEN_PROPERTY_POINTER, (void**) &ptr);
-
-    uint8_t *srcy = frame->data[0];
-    uint8_t *srcu = frame->data[1];
-    uint8_t *srcv = frame->data[2];
-
-    unsigned char *y = ptr;
-    unsigned char *u = y + (height * mStride);
-    unsigned char *v = u + ((height / 2) * (mStride / 2));
-
-    for (int i = 0; i < height; i++)
-    {
-        int doff = i * mStride;
-        int soff = i * frame->linesize[0];
-        memcpy(&y[doff], &srcy[soff], frame->width);
-    }
-
-    for (int i = 0; i < height / 2; i++)
-    {
-        int doff = i * mStride / 2;
-        int soff = i * frame->linesize[1];
-        memcpy(&u[doff], &srcu[soff], frame->width / 2);
-    }
-
-    for (int i = 0; i < height / 2; i++)
-    {
-        int doff = i * mStride / 2;
-        int soff = i * frame->linesize[2];
-        memcpy(&v[doff], &srcv[soff], frame->width / 2);
-    }
-
-    // Get the window buffer, blit the pixels to it and post the window update.
-    screen_get_window_property_pv(mScreenWindow, SCREEN_PROPERTY_RENDER_BUFFERS, (void**) mScreenBuf);
-    screen_blit(mScreenCtx, mScreenBuf[0], mScreenPixelBuffer, blitParameters);
-
-    int dirty_rects[4] =
-            { 0, 0, width, height };
-    screen_post_window(mScreenWindow, mScreenBuf[0], 1, dirty_rects, 0);
+    return fread(buf, 1, size, (FILE*) arg);
 }
 
-void ffvf_frame_callback(ffviewfinder_context *ffvf_context, AVFrame *frame, int i, void *arg)
+void ffe_write_callback(ffenc_context *ffe_context, uint8_t *buf, ssize_t size, void *arg)
 {
-    FFCameraSampleApp* app = (FFCameraSampleApp*) arg;
-    app->show_frame(frame);
+    fwrite(buf, 1, size, (FILE*) arg);
 }
 
 void FFCameraSampleApp::update_fps(camera_buffer_t* buf)
@@ -560,25 +457,25 @@ void FFCameraSampleApp::print_fps(camera_buffer_t* buf)
     }
 }
 
-void ffc_context_close(ffcamera_context *ffc_context, void *arg)
+void ffe_context_close(ffenc_context *ffe_context, void *arg)
 {
-    qDebug() << "closing ffcamera_context";
+    qDebug() << "closing ffenc_context";
 
     FFCameraSampleApp* app = (FFCameraSampleApp*) arg;
 
-    ffcamera_close(ffc_context);
+    ffenc_close(ffe_context);
 
     fclose(app->file);
     app->file = NULL;
 }
 
-void ffvf_context_close(ffviewfinder_context *ffvf_context, void *arg)
+void ffd_context_close(ffdec_context *ffd_context, void *arg)
 {
-    qDebug() << "closing ffviewfinder_context";
+    qDebug() << "closing ffdec_context";
 
     FFCameraSampleApp* app = (FFCameraSampleApp*) arg;
 
-    ffviewfinder_close(ffvf_context);
+    ffdec_close(ffd_context);
 
     fclose(app->file);
     app->file = NULL;

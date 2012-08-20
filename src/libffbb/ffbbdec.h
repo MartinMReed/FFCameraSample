@@ -13,8 +13,8 @@
  * limitations under the License.
  */
 
-#ifndef FFCAMAPI_H
-#define FFCAMAPI_H
+#ifndef FFBBDEC_H
+#define FFBBDEC_H
 
 // include math.h otherwise it will get included
 // by avformat.h and cause duplicate definition
@@ -30,16 +30,18 @@ extern "C"
 
 #include <sys/types.h>
 
-#include <camera/camera_api.h>
+#include <screen/screen.h>
+#include <bb/cascades/ForeignWindow>
 
 typedef enum
 {
-    FFCAMERA_OK = 0,
-    FFCAMERA_NOT_INITIALIZED,
-    FFCAMERA_NO_CODEC_SPECIFIED,
-    FFCAMERA_ALREADY_RUNNING,
-    FFCAMERA_ALREADY_STOPPED
-} ffcamera_error;
+    FFDEC_OK = 0,
+    FFDEC_NOT_INITIALIZED,
+    FFDEC_CODEC_NOT_OPEN,
+    FFDEC_NO_CODEC_SPECIFIED,
+    FFDEC_ALREADY_RUNNING,
+    FFDEC_ALREADY_STOPPED
+} ffdec_error;
 
 typedef struct
 {
@@ -49,62 +51,56 @@ typedef struct
     AVCodecContext *codec_context;
 
     /**
-     * File descriptor to write the encoded frames to automatically.
-     * This is optional. You can choose to use the write_callback
-     * and handle writing manually.
-     */
-    int fd;
-
-    /**
      * For internal use. Do not use.
      */
     void *reserved;
-} ffcamera_context;
+} ffdec_context;
 
 /**
  * Allocate the context with default values.
  */
-ffcamera_context *ffcamera_alloc();
+ffdec_context *ffdec_alloc();
 
 /**
  * Reset the context with default values.
  */
-void ffcamera_reset(ffcamera_context *ffc_context);
+void ffdec_reset(ffdec_context *ffd_context);
 
-ffcamera_error ffcamera_set_write_callback(ffcamera_context *ffc_context,
-        void (*write_callback)(ffcamera_context *ffc_context, const uint8_t *buf, ssize_t size, void *arg),
+ffdec_error ffdec_set_frame_callback(ffdec_context *ffd_context,
+        void (*frame_callback)(ffdec_context *ffd_context, AVFrame *frame, int i, void *arg),
         void *arg);
 
-ffcamera_error ffcamera_set_close_callback(ffcamera_context *ffc_context,
-        void (*close_callback)(ffcamera_context *ffc_context, void *arg),
+ffdec_error ffdec_set_read_callback(ffdec_context *ffd_context,
+        int (*read_callback)(ffdec_context *ffd_context, uint8_t *buf, ssize_t size, void *arg),
+        void *arg);
+
+ffdec_error ffdec_set_close_callback(ffdec_context *ffd_context,
+        void (*close_callback)(ffdec_context *ffd_context, void *arg),
         void *arg);
 
 /**
  * Close the context.
  * This will also close the AVCodecContext if not already closed.
  */
-ffcamera_error ffcamera_close(ffcamera_context *ffc_context);
+ffdec_error ffdec_close(ffdec_context *ffd_context);
 
 /**
  * Free the context.
  */
-ffcamera_error ffcamera_free(ffcamera_context *ffc_context);
+ffdec_error ffdec_free(ffdec_context *ffd_context);
 
 /**
  * Start recording and encoding the camera frames.
  * Encoding will begin on a background thread.
  */
-ffcamera_error ffcamera_start(ffcamera_context *ffc_context);
+ffdec_error ffdec_start(ffdec_context *ffd_context);
 
 /**
  * Stop recording frames. Once all recorded frames have been encoded
  * the background thread will die.
  */
-ffcamera_error ffcamera_stop(ffcamera_context *ffc_context);
+ffdec_error ffdec_stop(ffdec_context *ffd_context);
 
-/**
- * The ViewFinder callback to pass into camera_start_video_viewfinder.
- */
-void ffcamera_vfcallback(camera_handle_t handle, camera_buffer_t* buf, void* arg);
+ffdec_error ffdec_viewfinder(ffdec_context *ffd_context, QString &group, QString id, screen_window_t *window);
 
 #endif
