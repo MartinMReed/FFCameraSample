@@ -57,7 +57,7 @@ typedef struct
 /**
  * Allocate the context with default values.
  */
-ffenc_context *ffenc_alloc();
+ffenc_context *ffenc_alloc(void);
 
 /**
  * Reset the context with default values.

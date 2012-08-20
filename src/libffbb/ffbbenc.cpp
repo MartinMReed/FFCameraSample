@@ -22,17 +22,10 @@
 
 typedef struct
 {
-    uint8_t *framebuf;
-    camera_framedesc_t framedesc;
-} ffenc_camera_buffer;
-
-typedef struct
-{
     bool running;
     pthread_mutex_t reading_mutex;
     pthread_cond_t read_cond;
-    int frame_count;
-    std::deque<ffenc_camera_buffer*> frames;
+    std::deque<AVFrame*> frames;
     void (*write_callback)(ffenc_context *ffe_context, uint8_t *buf, ssize_t size, void *arg);
     void *write_callback_arg;
     void (*close_callback)(ffenc_context *ffe_context, void *arg);
@@ -124,7 +117,6 @@ ffenc_error ffenc_start(ffenc_context *ffe_context)
     if (ffe_reserved->running) return FFENC_ALREADY_RUNNING;
     if (!ffe_context->codec_context) return FFENC_NO_CODEC_SPECIFIED;
 
-    ffe_reserved->frame_count = 0;
     ffe_reserved->running = true;
     ffe_reserved->frames.clear();
 
@@ -156,8 +148,6 @@ void* encoding_thread(void* arg)
     int encode_buffer_len = 10000000;
     uint8_t *encode_buffer = (uint8_t *) av_malloc(encode_buffer_len);
 
-    AVFrame *frame = avcodec_alloc_frame();
-
     AVPacket packet;
     int got_packet;
 
@@ -171,24 +161,8 @@ void* encoding_thread(void* arg)
             continue;
         }
 
-        ffenc_camera_buffer *buf = ffe_reserved->frames.front();
+        AVFrame *frame = ffe_reserved->frames.front();
         ffe_reserved->frames.pop_front();
-
-        int frame_position = ffe_reserved->frame_count++;
-
-        int64_t uv_offset = buf->framedesc.nv12.uv_offset;
-        uint32_t height = buf->framedesc.nv12.height;
-        uint32_t width = buf->framedesc.nv12.width;
-
-        frame->pts = frame_position;
-
-        frame->linesize[0] = width;
-        frame->linesize[1] = width / 2;
-        frame->linesize[2] = width / 2;
-
-        frame->data[0] = buf->framebuf;
-        frame->data[1] = &buf->framebuf[uv_offset];
-        frame->data[2] = &buf->framebuf[uv_offset + ((width * height) / 4)];
 
         // reset the AVPacket
         av_init_packet(&packet);
@@ -204,18 +178,13 @@ void* encoding_thread(void* arg)
                     packet.data, packet.size, ffe_reserved->write_callback_arg);
         }
 
-        free(buf->framebuf);
-        free(buf);
-        buf = NULL;
+        free(frame->data[0]);
+        av_free(frame);
+        frame = NULL;
     }
-
-    av_free(frame);
-    frame = NULL;
 
     do
     {
-        ffe_reserved->frame_count++;
-
         // reset the AVPacket
         av_init_packet(&packet);
         packet.data = encode_buffer;
@@ -255,25 +224,31 @@ void ffenc_add_frame(ffenc_context *ffe_context, camera_buffer_t* buf)
     uint32_t width = buf->framedesc.nv12.width;
     uint32_t stride = buf->framedesc.nv12.stride;
 
-    uint32_t _stride = width; // remove stride
-    int64_t _uv_offset = _stride * height; // recompute and pack planes
+    uint32_t _stride = width;
+    int64_t _uv_offset = _stride * height;
 
-    ffenc_camera_buffer* _buf = (ffenc_camera_buffer*) malloc(sizeof(ffenc_camera_buffer));
-    _buf->framedesc = buf->framedesc;
-    _buf->framedesc.nv12.stride = _stride;
-    _buf->framedesc.nv12.uv_offset = _uv_offset;
-    _buf->framebuf = (uint8_t*) malloc(width * height * 3 / 2);
+    AVFrame *frame = avcodec_alloc_frame();
+
+    frame->pts = buf->frametimestamp;
+
+    frame->linesize[0] = _stride;
+    frame->linesize[1] = _stride / 2;
+    frame->linesize[2] = _stride / 2;
+
+    frame->data[0] = (uint8_t*) malloc(width * height * 3 / 2);
+    frame->data[1] = &frame->data[0][_uv_offset];
+    frame->data[2] = &frame->data[0][_uv_offset + ((width * height) / 4)];
 
     for (uint32_t i = 0; i < height; i++)
     {
         int64_t doff = i * _stride;
         int64_t soff = i * stride;
-        memcpy(&_buf->framebuf[doff], &buf->framebuf[soff], width);
+        memcpy(&frame->data[0][doff], &buf->framebuf[soff], width);
     }
 
     uint8_t *srcuv = &buf->framebuf[uv_offset];
-    uint8_t *destu = &_buf->framebuf[_uv_offset];
-    uint8_t *destv = &_buf->framebuf[_uv_offset + ((width * height) / 4)];
+    uint8_t *destu = frame->data[1];
+    uint8_t *destv = frame->data[2];
 
     for (uint32_t i = 0; i < height / 2; i++)
     {
@@ -286,7 +261,7 @@ void ffenc_add_frame(ffenc_context *ffe_context, camera_buffer_t* buf)
         srcuv += stride;
     }
 
-    ffe_reserved->frames.push_back(_buf);
+    ffe_reserved->frames.push_back(frame);
 
     pthread_cond_signal(&ffe_reserved->read_cond);
 }
