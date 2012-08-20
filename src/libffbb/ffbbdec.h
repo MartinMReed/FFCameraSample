@@ -101,6 +101,6 @@ ffdec_error ffdec_start(ffdec_context *ffd_context);
  */
 ffdec_error ffdec_stop(ffdec_context *ffd_context);
 
-ffdec_error ffdec_viewfinder(ffdec_context *ffd_context, QString &group, QString id, screen_window_t *window);
+ffdec_error ffdec_create_view(ffdec_context *ffd_context, QString group, QString id, screen_window_t *window);
 
 #endif

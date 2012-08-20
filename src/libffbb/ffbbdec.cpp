@@ -245,7 +245,7 @@ void* decoding_thread(void* arg)
     return 0;
 }
 
-ffdec_error ffdec_viewfinder(ffdec_context *ffd_context, QString &group, QString id, screen_window_t *window)
+ffdec_error ffdec_create_view(ffdec_context *ffd_context, QString group, QString id, screen_window_t *window)
 {
     ffdec_reserved *ffd_reserved = (ffdec_reserved*) ffd_context->reserved;
     if (!ffd_reserved) return FFDEC_NOT_INITIALIZED;

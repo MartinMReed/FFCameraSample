@@ -56,8 +56,6 @@ Q_OBJECT
     void onStopCamera();
     void onStartStopRecording();
 
-    bool createForeignWindow(QString group, QString id);
-
 public:
 
     FFCameraSampleApp();

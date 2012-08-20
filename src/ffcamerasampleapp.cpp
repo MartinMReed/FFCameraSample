@@ -112,20 +112,6 @@ FFCameraSampleApp::FFCameraSampleApp()
 
     ffe_context = ffenc_alloc();
     ffd_context = ffdec_alloc();
-
-    createForeignWindow(ForeignWindow::mainWindowGroupId(), "HelloForeignWindowAppID");
-}
-
-bool FFCameraSampleApp::createForeignWindow(QString group, QString id)
-{
-    screen_window_t window;
-    ffdec_viewfinder(ffd_context, group, id, &window);
-
-    int window_size[] =
-            { 768, 1280 };
-    screen_set_window_property_iv(window, SCREEN_PROPERTY_SIZE, window_size);
-
-    return true;
 }
 
 FFCameraSampleApp::~FFCameraSampleApp()
@@ -231,7 +217,6 @@ void FFCameraSampleApp::onStartRear()
     const QString windowGroup = mViewfinderWindow->windowGroup();
     const QString windowId = mViewfinderWindow->windowId();
     createViewfinder(CAMERA_UNIT_REAR, windowGroup, windowId);
-    onStartDecoder();
 }
 
 void FFCameraSampleApp::onStopCamera()
@@ -309,6 +294,14 @@ void FFCameraSampleApp::onStartDecoder()
         fprintf(stderr, "could not open codec context\n");
         return;
     }
+
+    screen_window_t window;
+    ffdec_create_view(ffd_context, ForeignWindow::mainWindowGroupId(), "HelloForeignWindowAppID", &window);
+
+    int window_size[2];
+    window_size[0] = 768;
+    window_size[1] = 1280;
+    screen_set_window_property_iv(window, SCREEN_PROPERTY_SIZE, window_size);
 
     if (ffdec_start(ffd_context) != FFDEC_OK)
     {
