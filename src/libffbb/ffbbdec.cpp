@@ -60,7 +60,7 @@ void ffdec_reset(ffdec_context *ffd_context)
     ffdec_reserved *ffd_reserved = (ffdec_reserved*) ffd_context->reserved;
 
     // don't carry over the view, it needs to be recreated
-    if (ffd_reserved->view) free(ffd_reserved->view);
+    if (ffd_reserved && ffd_reserved->view) free(ffd_reserved->view);
 
     if (!ffd_reserved) ffd_reserved = (ffdec_reserved*) malloc(sizeof(ffdec_reserved));
     memset(ffd_reserved, 0, sizeof(ffdec_reserved));
@@ -369,12 +369,12 @@ void display_frame(ffdec_context *ffd_context, AVFrame *frame)
         memcpy(&v[doff], &srcv[soff], frame->width / 2);
     }
 
-    screen_buffer_t screen_buffer[1];
-    screen_get_window_property_pv(screen_window, SCREEN_PROPERTY_RENDER_BUFFERS, (void**) screen_buffer);
+    screen_buffer_t screen_buffer;
+    screen_get_window_property_pv(screen_window, SCREEN_PROPERTY_RENDER_BUFFERS, (void**) &screen_buffer);
 
     int attribs[] = { SCREEN_BLIT_SOURCE_WIDTH, width, SCREEN_BLIT_SOURCE_HEIGHT, height, SCREEN_BLIT_END };
-    screen_blit(screen_context, screen_buffer[0], screen_pixel_buffer, attribs);
+    screen_blit(screen_context, screen_buffer, screen_pixel_buffer, attribs);
 
     int dirty_rects[] = { 0, 0, width, height };
-    screen_post_window(screen_window, screen_buffer[0], 1, dirty_rects, 0);
+    screen_post_window(screen_window, screen_buffer, 1, dirty_rects, 0);
 }
