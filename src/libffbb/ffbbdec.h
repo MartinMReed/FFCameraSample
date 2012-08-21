@@ -31,7 +31,7 @@ extern "C"
 #include <sys/types.h>
 
 #include <screen/screen.h>
-#include <bb/cascades/ForeignWindow>
+#include <QString>
 
 typedef enum
 {
