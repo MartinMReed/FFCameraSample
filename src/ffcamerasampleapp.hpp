@@ -82,11 +82,15 @@ private:
     camera_handle_t mCameraHandle;
     camera_unit_t mCameraUnit;
 
-    FILE *file;
+    FILE *write_file;
+    FILE *read_file;
+    int decode_read;
     bool record, decode;
     std::deque<int64_t> fps;
     ffenc_context *ffe_context;
     ffdec_context *ffd_context;
+    pthread_mutex_t reading_mutex;
+    pthread_cond_t read_cond;
 };
 
 #endif

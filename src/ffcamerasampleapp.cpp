@@ -31,6 +31,8 @@
 #include <sys/stat.h>
 #include <libgen.h>
 
+#include <pthread.h>
+
 #include "ffcamerasampleapp.hpp"
 
 using namespace bb::cascades;
@@ -73,7 +75,7 @@ FFCameraSampleApp::FFCameraSampleApp()
     // NOTE: some of these buttons are not initially visible
     mStartFrontButton = Button::create("Front");
     mStartRearButton = Button::create("Rear");
-    mStartDecoderButton = Button::create("Decode");
+    mStartDecoderButton = Button::create("Play");
     mStopButton = Button::create("Stop Camera");
     mStopButton->setVisible(false);
     mStartStopButton = Button::create("Record Start");
@@ -112,6 +114,9 @@ FFCameraSampleApp::FFCameraSampleApp()
 
     ffe_context = ffenc_alloc();
     ffd_context = ffdec_alloc();
+
+    pthread_mutex_init(&reading_mutex, 0);
+    pthread_cond_init(&read_cond, 0);
 }
 
 FFCameraSampleApp::~FFCameraSampleApp()
@@ -123,6 +128,9 @@ FFCameraSampleApp::~FFCameraSampleApp()
 
     ffdec_free(ffd_context);
     ffd_context = NULL;
+
+    pthread_mutex_destroy(&reading_mutex);
+    pthread_cond_destroy(&read_cond);
 }
 
 void FFCameraSampleApp::onWindowAttached(unsigned long handle, const QString &group, const QString &id)
@@ -238,7 +246,14 @@ void FFCameraSampleApp::onStopCamera()
 
 void FFCameraSampleApp::onStartDecoder()
 {
-    if (record || decode) return;
+    if (decode)
+    {
+        decode = false;
+        ffdec_stop(ffd_context);
+        pthread_cond_signal(&read_cond);
+        mStartDecoderButton->setText("Play");
+        return;
+    }
 
     struct stat buf;
     if (stat(FILENAME, &buf) == -1)
@@ -247,9 +262,9 @@ void FFCameraSampleApp::onStartDecoder()
         return;
     }
 
-    file = fopen(FILENAME, "rb");
+    read_file = fopen(FILENAME, "rb");
 
-    if (!file)
+    if (!read_file)
     {
         fprintf(stderr, "could not open %s: %d: %s\n", FILENAME, errno, strerror(errno));
         return;
@@ -282,9 +297,11 @@ void FFCameraSampleApp::onStartDecoder()
         codec_context->flags |= CODEC_FLAG_TRUNCATED;
     }
 
+    decode_read = 0;
+
     ffdec_reset(ffd_context);
     ffdec_set_close_callback(ffd_context, ffd_context_close, this);
-    ffdec_set_read_callback(ffd_context, ffd_read_callback, file);
+    ffdec_set_read_callback(ffd_context, ffd_read_callback, this);
     ffd_context->codec_context = codec_context;
 
     if (avcodec_open2(codec_context, codec, NULL) < 0)
@@ -297,8 +314,8 @@ void FFCameraSampleApp::onStartDecoder()
     screen_window_t window;
     ffdec_create_view(ffd_context, ForeignWindow::mainWindowGroupId(), "HelloForeignWindowAppID", &window);
 
-    int window_size[] = { 768, 1280 };
-    screen_set_window_property_iv(window, SCREEN_PROPERTY_SIZE, window_size);
+//    int window_size[] = { 768, 1280 };
+//    screen_set_window_property_iv(window, SCREEN_PROPERTY_SIZE, window_size);
 
     if (ffdec_start(ffd_context) != FFDEC_OK)
     {
@@ -308,6 +325,10 @@ void FFCameraSampleApp::onStartDecoder()
     }
 
     decode = true;
+
+    mStartDecoderButton->setText("Stop");
+
+    qDebug() << "started ffdec_context";
 }
 
 void FFCameraSampleApp::start_encoder(CodecID codec_id)
@@ -319,9 +340,9 @@ void FFCameraSampleApp::start_encoder(CodecID codec_id)
         remove(FILENAME);
     }
 
-    file = fopen(FILENAME, "wb");
+    write_file = fopen(FILENAME, "wb");
 
-    if (!file)
+    if (!write_file)
     {
         fprintf(stderr, "could not open %s: %d: %s\n", FILENAME, errno, strerror(errno));
         return;
@@ -355,7 +376,7 @@ void FFCameraSampleApp::start_encoder(CodecID codec_id)
 
     ffenc_reset(ffe_context);
     ffenc_set_close_callback(ffe_context, ffe_context_close, this);
-    ffenc_set_write_callback(ffe_context, ffe_write_callback, file);
+    ffenc_set_write_callback(ffe_context, ffe_write_callback, this);
     ffe_context->codec_context = codec_context;
 
     if (avcodec_open2(codec_context, codec, NULL) < 0)
@@ -376,8 +397,6 @@ void FFCameraSampleApp::start_encoder(CodecID codec_id)
 void FFCameraSampleApp::onStartStopRecording()
 {
     if (mCameraHandle == CAMERA_HANDLE_INVALID) return;
-
-    if (decode) return;
 
     if (record)
     {
@@ -401,6 +420,8 @@ void FFCameraSampleApp::onStartStopRecording()
 
     record = true;
 
+    onStartDecoder();
+
     mStartStopButton->setText("Stop Recording");
     mStopButton->setEnabled(false);
     mStatusLabel->setText(basename(FILENAME));
@@ -420,12 +441,33 @@ void vf_callback(camera_handle_t handle, camera_buffer_t* buf, void* arg)
 
 int ffd_read_callback(ffdec_context *ffd_context, uint8_t *buf, ssize_t size, void *arg)
 {
-    return fread(buf, 1, size, (FILE*) arg);
+    FFCameraSampleApp* app = (FFCameraSampleApp*) arg;
+
+    int read;
+    do
+    {
+        fseek(app->read_file, app->decode_read, SEEK_SET);
+        read = fread(buf, 1, size, app->read_file);
+
+        if (read > 0)
+        {
+            app->decode_read += read;
+            break;
+        }
+
+        pthread_mutex_lock(&app->reading_mutex);
+        pthread_cond_wait(&app->read_cond, &app->reading_mutex);
+        pthread_mutex_unlock(&app->reading_mutex);
+    }
+    while (app->decode);
+    return read;
 }
 
 void ffe_write_callback(ffenc_context *ffe_context, uint8_t *buf, ssize_t size, void *arg)
 {
-    fwrite(buf, 1, size, (FILE*) arg);
+    FFCameraSampleApp* app = (FFCameraSampleApp*) arg;
+    fwrite(buf, 1, size, app->write_file);
+    pthread_cond_signal(&app->read_cond);
 }
 
 void FFCameraSampleApp::update_fps(camera_buffer_t* buf)
@@ -455,8 +497,8 @@ void ffe_context_close(ffenc_context *ffe_context, void *arg)
 
     ffenc_close(ffe_context);
 
-    fclose(app->file);
-    app->file = NULL;
+    fclose(app->write_file);
+    app->write_file = NULL;
 }
 
 void ffd_context_close(ffdec_context *ffd_context, void *arg)
@@ -467,8 +509,6 @@ void ffd_context_close(ffdec_context *ffd_context, void *arg)
 
     ffdec_close(ffd_context);
 
-    fclose(app->file);
-    app->file = NULL;
-
-    app->decode = false;
+    fclose(app->read_file);
+    app->read_file = NULL;
 }
