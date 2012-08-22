@@ -52,8 +52,8 @@ Q_OBJECT
     void onWindowDetached(unsigned long handle, const QString &group, const QString &id);
     void onStartFront();
     void onStartRear();
-    void onStartDecoder();
     void onStopCamera();
+    void onStartStopDecoder();
     void onStartStopRecording();
 
 public:
@@ -69,8 +69,8 @@ private:
     void print_fps(camera_buffer_t* buf);
     void show_frame(AVFrame *frame);
 
-    void start_encoder(CodecID codec_id);
-    void start_decoder(CodecID codec_id);
+    bool start_encoder(CodecID codec_id);
+    bool start_decoder(CodecID codec_id);
 
     ForeignWindow *mViewfinderWindow;
     Button *mStartFrontButton;
@@ -82,6 +82,7 @@ private:
     camera_handle_t mCameraHandle;
     camera_unit_t mCameraUnit;
 
+    ForeignWindow *mFFViewWindow;
     FILE *write_file;
     FILE *read_file;
     int decode_read;

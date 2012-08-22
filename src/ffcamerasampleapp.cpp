@@ -42,6 +42,7 @@ using namespace bb::cascades;
 #define VIDEO_HEIGHT 512
 //#define VIDEO_WIDTH 1080
 //#define VIDEO_HEIGHT 1920
+#define CODEC_ID CODEC_ID_MPEG2VIDEO
 #define FILENAME (char*)"/accounts/1000/shared/camera/VID_TEST.mpg"
 
 FFCameraSampleApp::FFCameraSampleApp()
@@ -84,7 +85,7 @@ FFCameraSampleApp::FFCameraSampleApp()
     // connect actions to the buttons
     QObject::connect(mStartFrontButton, SIGNAL(clicked()), this, SLOT(onStartFront()));
     QObject::connect(mStartRearButton, SIGNAL(clicked()), this, SLOT(onStartRear()));
-    QObject::connect(mStartDecoderButton, SIGNAL(clicked()), this, SLOT(onStartDecoder()));
+    QObject::connect(mStartDecoderButton, SIGNAL(clicked()), this, SLOT(onStartStopDecoder()));
     QObject::connect(mStopButton, SIGNAL(clicked()), this, SLOT(onStopCamera()));
     QObject::connect(mStartStopButton, SIGNAL(clicked()), this, SLOT(onStartStopRecording()));
     mStatusLabel = Label::create("filename");
@@ -244,7 +245,7 @@ void FFCameraSampleApp::onStopCamera()
     mStartDecoderButton->setVisible(true);
 }
 
-void FFCameraSampleApp::onStartDecoder()
+void FFCameraSampleApp::onStartStopDecoder()
 {
     if (decode)
     {
@@ -255,11 +256,51 @@ void FFCameraSampleApp::onStartDecoder()
         return;
     }
 
+    if (!start_decoder(CODEC_ID)) return;
+
+    decode = true;
+
+    mStartDecoderButton->setText("Stop");
+}
+
+void FFCameraSampleApp::onStartStopRecording()
+{
+    if (mCameraHandle == CAMERA_HANDLE_INVALID) return;
+
+    if (record)
+    {
+        record = false;
+
+        onStartStopDecoder();
+
+        ffenc_stop(ffe_context);
+
+        mStartStopButton->setText("Start Recording");
+        mStopButton->setEnabled(true);
+        mStatusLabel->setVisible(false);
+
+        return;
+    }
+
+    if (!start_encoder(CODEC_ID)) return;
+
+    record = true;
+
+    onStartStopDecoder();
+
+    mStartStopButton->setText("Stop Recording");
+    mStopButton->setEnabled(false);
+    mStatusLabel->setText(basename(FILENAME));
+    mStatusLabel->setVisible(true);
+}
+
+bool FFCameraSampleApp::start_decoder(CodecID codec_id)
+{
     struct stat buf;
     if (stat(FILENAME, &buf) == -1)
     {
         fprintf(stderr, "file not found %s\n", FILENAME);
-        return;
+        return false;
     }
 
     read_file = fopen(FILENAME, "rb");
@@ -267,10 +308,9 @@ void FFCameraSampleApp::onStartDecoder()
     if (!read_file)
     {
         fprintf(stderr, "could not open %s: %d: %s\n", FILENAME, errno, strerror(errno));
-        return;
+        return false;
     }
 
-    CodecID codec_id = CODEC_ID_MPEG2VIDEO;
     AVCodec *codec = avcodec_find_decoder(codec_id);
 
     if (!codec)
@@ -281,7 +321,7 @@ void FFCameraSampleApp::onStartDecoder()
         if (!codec)
         {
             fprintf(stderr, "could not find codec\n");
-            return;
+            return false;
         }
     }
 
@@ -308,7 +348,7 @@ void FFCameraSampleApp::onStartDecoder()
     {
         av_free(codec_context);
         fprintf(stderr, "could not open codec context\n");
-        return;
+        return false;
     }
 
     screen_window_t window;
@@ -321,17 +361,15 @@ void FFCameraSampleApp::onStartDecoder()
     {
         fprintf(stderr, "could not start ffdec\n");
         ffdec_close(ffd_context);
-        return;
+        return false;
     }
 
-    decode = true;
-
-    mStartDecoderButton->setText("Stop");
-
     qDebug() << "started ffdec_context";
+
+    return true;
 }
 
-void FFCameraSampleApp::start_encoder(CodecID codec_id)
+bool FFCameraSampleApp::start_encoder(CodecID codec_id)
 {
     struct stat buf;
     if (stat(FILENAME, &buf) != -1)
@@ -345,7 +383,7 @@ void FFCameraSampleApp::start_encoder(CodecID codec_id)
     if (!write_file)
     {
         fprintf(stderr, "could not open %s: %d: %s\n", FILENAME, errno, strerror(errno));
-        return;
+        return false;
     }
 
     AVCodec *codec = avcodec_find_encoder(codec_id);
@@ -358,7 +396,7 @@ void FFCameraSampleApp::start_encoder(CodecID codec_id)
         if (!codec)
         {
             fprintf(stderr, "could not find codec\n");
-            return;
+            return false;
         }
     }
 
@@ -383,49 +421,19 @@ void FFCameraSampleApp::start_encoder(CodecID codec_id)
     {
         av_free(codec_context);
         fprintf(stderr, "could not open codec context\n");
-        return;
+        return false;
     }
 
     if (ffenc_start(ffe_context) != FFENC_OK)
     {
         fprintf(stderr, "could not start ffenc\n");
         ffenc_close(ffe_context);
-        return;
-    }
-}
-
-void FFCameraSampleApp::onStartStopRecording()
-{
-    if (mCameraHandle == CAMERA_HANDLE_INVALID) return;
-
-    if (record)
-    {
-        record = false;
-
-        qDebug() << "stop requested";
-
-        ffenc_stop(ffe_context);
-
-        mStartStopButton->setText("Start Recording");
-        mStopButton->setEnabled(true);
-        mStatusLabel->setVisible(false);
-
-        return;
+        return false;
     }
 
-    qDebug() << "start requested";
+    qDebug() << "started ffe_context";
 
-    CodecID codec_id = CODEC_ID_MPEG2VIDEO;
-    start_encoder(codec_id);
-
-    record = true;
-
-    onStartDecoder();
-
-    mStartStopButton->setText("Stop Recording");
-    mStopButton->setEnabled(false);
-    mStatusLabel->setText(basename(FILENAME));
-    mStatusLabel->setVisible(true);
+    return true;
 }
 
 void vf_callback(camera_handle_t handle, camera_buffer_t* buf, void* arg)
