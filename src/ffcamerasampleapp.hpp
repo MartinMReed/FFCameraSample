@@ -81,7 +81,6 @@ private:
     camera_handle_t mCameraHandle;
     camera_unit_t mCameraUnit;
 
-    ForeignWindowControl *mFFViewWindow;
     FILE *write_file;
     FILE *read_file;
     int decode_read;
