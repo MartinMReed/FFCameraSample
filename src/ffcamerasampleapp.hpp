@@ -19,7 +19,7 @@
 #include <QtCore/QObject>
 #include <QtCore/QMetaType>
 
-#include <bb/cascades/ForeignWindow>
+#include <bb/cascades/ForeignWindowControl>
 #include <bb/cascades/Button>
 #include <bb/cascades/Label>
 
@@ -48,8 +48,7 @@ class FFCameraSampleApp : public QObject
 Q_OBJECT
     public slots:
 
-    void onWindowAttached(unsigned long handle, const QString &group, const QString &id);
-    void onWindowDetached(unsigned long handle, const QString &group, const QString &id);
+    void onWindowAttached(screen_window_t win, const QString &group, const QString &id);
     void onStartFront();
     void onStartRear();
     void onStopCamera();
@@ -72,7 +71,7 @@ private:
     bool start_encoder(CodecID codec_id);
     bool start_decoder(CodecID codec_id);
 
-    ForeignWindow *mViewfinderWindow;
+    ForeignWindowControl *mViewfinderWindow;
     Button *mStartFrontButton;
     Button *mStartRearButton;
     Button *mStartDecoderButton;
@@ -82,7 +81,7 @@ private:
     camera_handle_t mCameraHandle;
     camera_unit_t mCameraUnit;
 
-    ForeignWindow *mFFViewWindow;
+    ForeignWindowControl *mFFViewWindow;
     FILE *write_file;
     FILE *read_file;
     int decode_read;

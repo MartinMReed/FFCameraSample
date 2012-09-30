@@ -14,11 +14,11 @@
  * limitations under the License.
  */
 #include <bb/cascades/Application>
-#include <bb/cascades/ForeignWindow>
+#include <bb/cascades/Window>
+#include <bb/cascades/ForeignWindowControl>
 #include <bb/cascades/Container>
 #include <bb/cascades/StackLayout>
 #include <bb/cascades/DockLayout>
-#include <bb/cascades/DockLayoutProperties>
 #include <bb/cascades/Button>
 #include <bb/cascades/Label>
 #include <bb/cascades/Page>
@@ -45,73 +45,54 @@ using namespace bb::cascades;
 #define CODEC_ID CODEC_ID_MPEG2VIDEO
 #define FILENAME (char*)"/accounts/1000/shared/camera/VID_TEST.mpg"
 
+// workaround a ForeignWindowControl race condition
+#define WORKAROUND_FWC
+
 FFCameraSampleApp::FFCameraSampleApp()
         : mCameraHandle(CAMERA_HANDLE_INVALID), record(false), decode(false)
 {
-    // create our foreign window
-    // Using .id() in the builder is equivalent to mViewfinderWindow->setWindowId()
-    mViewfinderWindow = ForeignWindow::create().id(QString("cameraViewfinder"));
+    mViewfinderWindow = ForeignWindowControl::create().windowId(QString("cameraViewfinder"));
 
-    // NOTE that there is a bug in ForeignWindow in 10.0.6 whereby the
-    // SCREEN_PROPERTY_SOURCE_SIZE is updated when windows are attached.
-    // We don't want this to happen, so we are disabling WindowFrameUpdates.
-    // What this means is that if the ForeignWindow geometry is changed, then
-    // the underlying screen window properties are not automatically updated to
-    // match.  You will have to manually do so by listening for controlFrameChanged
-    // signals.  This is outside of the scope of this sample.
-    mViewfinderWindow->setWindowFrameUpdateEnabled(false);
+    // Allow Cascades to update the native window's size, position, and visibility, but not the source-size.
+    // Cascades may otherwise attempt to redefine the buffer source-size to match the window size, which would yield
+    // undesirable results.  You can experiment with this if you want to see what I mean.
+    mViewfinderWindow->setUpdatedProperties(WindowProperty::Position | WindowProperty::Size | WindowProperty::Visible);
 
-    QObject::connect(mViewfinderWindow, SIGNAL(windowAttached(unsigned long,
-                    const QString &, const QString &)), this, SLOT(onWindowAttached(unsigned long,
-                    const QString &,const QString &)));
+    QObject::connect(mViewfinderWindow,
+            SIGNAL(windowAttached(screen_window_t, const QString &, const QString &)),
+            this, SLOT(onWindowAttached(screen_window_t, const QString &,const QString &)));
 
-    // NOTE that there is a bug in ForeignWindow in 10.0.6 whereby
-    // when a window is detached, it's windowHandle is not reset to 0.
-    // We need to connect a detach handler to implement a workaround.
-    QObject::connect(mViewfinderWindow, SIGNAL(windowDetached(unsigned long,
-                    const QString &, const QString &)), this, SLOT(onWindowDetached(unsigned long,
-                    const QString &,const QString &)));
+    mStartFrontButton = Button::create("Front")
+            .onClicked(this, SLOT(onStartFront()));
 
-    // create a bunch of camera control buttons
-    // NOTE: some of these buttons are not initially visible
-    mStartFrontButton = Button::create("Front");
-    mStartRearButton = Button::create("Rear");
-    mStartDecoderButton = Button::create("Play");
-    mStopButton = Button::create("Stop Camera");
+    mStartRearButton = Button::create("Rear")
+            .onClicked(this, SLOT(onStartRear()));
+
+    mStartDecoderButton = Button::create("Play")
+            .onClicked(this, SLOT(onStartStopDecoder()));
+
+    mStopButton = Button::create("Stop Camera")
+            .onClicked(this, SLOT(onStopCamera()));
     mStopButton->setVisible(false);
-    mStartStopButton = Button::create("Record Start");
+
+    mStartStopButton = Button::create("Record Start")
+            .onClicked(this, SLOT(onStartStopRecording()));
     mStartStopButton->setVisible(false);
 
-    // connect actions to the buttons
-    QObject::connect(mStartFrontButton, SIGNAL(clicked()), this, SLOT(onStartFront()));
-    QObject::connect(mStartRearButton, SIGNAL(clicked()), this, SLOT(onStartRear()));
-    QObject::connect(mStartDecoderButton, SIGNAL(clicked()), this, SLOT(onStartStopDecoder()));
-    QObject::connect(mStopButton, SIGNAL(clicked()), this, SLOT(onStopCamera()));
-    QObject::connect(mStartStopButton, SIGNAL(clicked()), this, SLOT(onStartStopRecording()));
     mStatusLabel = Label::create("filename");
     mStatusLabel->setVisible(false);
 
-    // using dock layout mainly.  the viewfinder foreign window sits in the center,
-    // and the buttons live in their own container at the bottom.
-    // a single text label sits at the top of the screen to report recording status.
     Container* container = Container::create().layout(DockLayout::create())
-            .add(Container::create().layoutProperties(DockLayoutProperties::create()
-            .horizontal(HorizontalAlignment::Center)
-            .vertical(VerticalAlignment::Center))
-            .add(mViewfinderWindow))
-            .add(Container::create().layoutProperties(DockLayoutProperties::create()
-            .horizontal(HorizontalAlignment::Left).vertical(VerticalAlignment::Top))
-            .add(mStatusLabel))
-            .add(Container::create().layoutProperties(DockLayoutProperties::create()
-            .horizontal(HorizontalAlignment::Center).vertical(VerticalAlignment::Bottom))
-            .layout(StackLayout::create().direction(LayoutDirection::LeftToRight))
+            .add(Container::create().horizontal(HorizontalAlignment::Center).vertical(VerticalAlignment::Center).add(mViewfinderWindow))
+            .add(Container::create().horizontal(HorizontalAlignment::Left).vertical(VerticalAlignment::Top).add(mStatusLabel))
+            .add(Container::create().horizontal(HorizontalAlignment::Center).vertical(VerticalAlignment::Bottom).layout(StackLayout::create().orientation(LayoutOrientation::LeftToRight))
             .add(mStartFrontButton)
             .add(mStartRearButton)
             .add(mStartDecoderButton)
             .add(mStartStopButton)
             .add(mStopButton));
 
-    Application::setScene(Page::create().content(container));
+    Application::instance()->setScene(Page::create().content(container));
 
     ffe_context = ffenc_alloc();
     ffd_context = ffdec_alloc();
@@ -134,10 +115,9 @@ FFCameraSampleApp::~FFCameraSampleApp()
     pthread_cond_destroy(&read_cond);
 }
 
-void FFCameraSampleApp::onWindowAttached(unsigned long handle, const QString &group, const QString &id)
+void FFCameraSampleApp::onWindowAttached(screen_window_t win, const QString &group, const QString &id)
 {
-    qDebug() << "onWindowAttached: " << handle << ", " << group << ", " << id;
-    screen_window_t win = (screen_window_t) handle;
+    qDebug() << "onWindowAttached: " << group << ", " << id;
 
     // set screen properties to mirror if this is the front-facing camera
     int mirror = mCameraUnit == CAMERA_UNIT_FRONT;
@@ -156,22 +136,13 @@ void FFCameraSampleApp::onWindowAttached(unsigned long handle, const QString &gr
     int visible = 1;
     screen_set_window_property_iv(win, SCREEN_PROPERTY_VISIBLE, &visible);
 
-    // There is a bug in ForeignWindow in 10.0.6 which defers window context
-    // flushing until some future UI update.  As a result, the window will
-    // not actually be visible until someone flushes the context.  This is
-    // fixed in the next release.  For now, we will just manually flush the
-    // window context.
-    screen_context_t ctx;
-    screen_get_window_property_pv(win, SCREEN_PROPERTY_CONTEXT, (void**) &ctx);
-    screen_flush_context(ctx, 0);
-}
-
-void FFCameraSampleApp::onWindowDetached(unsigned long handle, const QString &group, const QString &id)
-{
-    // There is a bug in ForeignWindow in 10.0.6 whereby the windowHandle is not
-    // reset to 0 when a detach event happens.  We must forcefully zero it here
-    // in order for a re-attach to work again in the future.
-    mViewfinderWindow->setWindowHandle(0);
+#ifdef WORKAROUND_FWC
+    // seems we still need a workaround in R9 for a potential race due to
+    // ForeignWindowControl updating/flushing the window's properties in
+    // parallel with the execution of the onWindowAttached() handler.
+    mViewfinderWindow->setVisible(false);
+    mViewfinderWindow->setVisible(true);
+#endif
 }
 
 int FFCameraSampleApp::createViewfinder(camera_unit_t cameraUnit, const QString &group, const QString &id)
@@ -352,7 +323,7 @@ bool FFCameraSampleApp::start_decoder(CodecID codec_id)
     }
 
     screen_window_t window;
-    ffdec_create_view(ffd_context, ForeignWindow::mainWindowGroupId(), "HelloForeignWindowAppID", &window);
+    ffdec_create_view(ffd_context, Application::instance()->mainWindow()->groupId(), "HelloForeignWindowAppID", &window);
 
 //    int window_size[] = { 768, 1280 };
 //    screen_set_window_property_iv(window, SCREEN_PROPERTY_SIZE, window_size);
